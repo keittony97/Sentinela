@@ -4,7 +4,7 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 
 ## Status atual
 
-**Fase em andamento:** Fase 4 — Primeira ferramenta passiva, ponta a ponta (concluída)
+**Fase em andamento:** Fase 5 — Demais ferramentas do modo "Verificação Externa" (concluída)
 
 ## Checklist de fases
 
@@ -12,7 +12,7 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - [x] Fase 2 — Modelo de dados + auth + RLS
 - [x] Fase 3 — Cadastro de alvo + gate de modalidade legal
 - [x] Fase 4 — Primeira ferramenta passiva, ponta a ponta
-- [ ] Fase 5 — Demais ferramentas do modo "Verificação Externa"
+- [x] Fase 5 — Demais ferramentas do modo "Verificação Externa"
 - [ ] Fase 6 — Relatório exportável
 - [ ] Fase 7 — Modo "Ambiente de Teste" (ferramentas ativas)
 - [ ] Fase 8 — Migração para hospedagem local/intranet
@@ -34,7 +34,9 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - Docker não está instalado na máquina de desenvolvimento atual — `docker-compose.yml`/`worker/Dockerfile` existem e deveriam funcionar, mas só foram testados rodando `uvicorn` direto (sem container). Validar quando houver Docker disponível (ou já na hospedagem online da Fase 8... quer dizer, da fase de deploy real).
 - O worker só roda localmente por enquanto (`uvicorn main:app` manual) — não há deploy real (VPS dedicada mencionada no documento original) nem supervisão de processo (restart automático se cair). Entra quando o app for hospedado de verdade.
 - Animação de boot da tela de login implementada (Sessão 5). Faltam as variantes estáticas do logo em SVG (favicon, header/topbar) — ver `CLAUDE.md`.
-- **Pendência de segurança para o usuário:** o fator de MFA do Admin (`keittony.ferreira`) foi recriado várias vezes durante testes automatizados nesta sessão (Fases 3 e 4) e a versão atual no banco foi gerada por um script de teste, não pelo autenticador real do usuário. Antes de usar o sistema de verdade, entre em `/mfa`... na verdade a tela `/mfa` só permite *adicionar* um fator, não remover o existente — para reconfigurar, seria preciso remover o fator antigo direto no dashboard do Supabase (Authentication → Users → MFA) e então fazer o enrollment de novo pela tela. Avaliar se vale adicionar uma opção de "remover/trocar fator" na tela de MFA numa fase futura.
+- A tela `/mfa` só permite *adicionar* um fator, não remover/trocar o existente — pra resetar, só via SQL direto em `auth.mfa_factors` (o que fiz para o Admin a pedido do usuário, na Sessão 6). Avaliar se vale adicionar essa opção na própria tela numa fase futura, senão isso sempre vai precisar de mim/SQL manual.
+- `exposed_ports` (Shodan) está implementado mas nunca rodou de verdade — `SHODAN_API_KEY` não configurada (o usuário não tem/forneceu uma conta Shodan). A ferramenta detecta a ausência e registra um achado informativo em vez de falhar, então não quebra nada, mas a cobertura de "portas expostas" fica incompleta até alguém configurar a chave em `worker/.env`.
+- `storage_exposure` tem taxa de falso positivo conhecida e documentada no próprio achado (severidade `medio`, não `alto`) — nomes de bucket S3/GCS são um namespace global, então bater o nome não prova que o bucket pertence à organização do alvo. Confirmado na prática durante o teste da Fase 5 contra `example.com`.
 
 ## Bugs encontrados e corrigidos nesta sessão
 
@@ -99,6 +101,21 @@ Documento inicial (`CLAUDE.md`) definido antes de qualquer código.
 - Build e lint (`next build`, `eslint .`) passando sem erros.
 
 **Próximo passo:** Fase 5 — reaproveitar o pipeline (worker + `TOOL_RUNNERS` + tela de scan) para as demais ferramentas passivas do modo "Verificação Externa" (exposição de configs/chaves em código público, subdomínios públicos, portas via serviços passivos tipo Shodan/Censys, permissões públicas em bancos/storage expostos). Cada uma vira só um novo módulo em `worker/checks/`.
+
+### Sessão 6 — 2026-09-14 — Fase 5: demais ferramentas passivas
+- A pedido do usuário, desabilitei o fator de MFA de teste do Admin (`keittony.ferreira`) direto via SQL (`delete from auth.mfa_factors`), pra ele conseguir cadastrar o autenticador de verdade pela tela `/mfa`.
+- 4 novos módulos em `worker/checks/`, todos seguindo o contrato `run(url) -> (logs, findings)` estabelecido na Fase 4:
+  - `subdomains.py` — Certificate Transparency via crt.sh (sem API key, 100% passivo).
+  - `exposed_files.py` — checa caminhos sensíveis bem conhecidos (`.env`, `.git/config`, backups...), com sondagem de baseline pra não confundir "soft 404" com arquivo de verdade.
+  - `exposed_ports.py` — consulta passiva ao Shodan; sem `SHODAN_API_KEY` configurada, registra achado informativo em vez de falhar.
+  - `storage_exposure.py` — testa nomes de bucket S3/GCS derivados do domínio do alvo.
+- Refatorei o patch de TLS (`truststore`) pra um módulo dedicado `worker/net.py`, importado explicitamente por `db.py` e cada `checks/*.py` — antes dependia implicitamente da ordem de import (`db` sendo importado antes dos checks em `main.py`), o que só funcionava por acidente e quebrou ao testar os checks isoladamente via um script novo (`worker/test_checks.py`, mantido no repo como ferramenta de desenvolvimento).
+- Ajustei a severidade do achado de `storage_exposure` de `alto` pra `medio` com um aviso explícito de "confirmar propriedade" — descobri na prática (testando contra `example.com`) que nomes de bucket são um namespace global e o teste encontrou um bucket real de terceiros sem nenhuma relação com o alvo.
+- Frontend: `app/src/lib/scanTools.ts` centraliza a lista de ferramentas passivas (espelha `TOOL_RUNNERS` do worker); `StartScanForm` virou uma lista de checkboxes (todas marcadas por padrão) em vez de um botão fixo pra `headers_tls`; a action valida os valores recebidos contra essa lista antes de gravar `tools_used`.
+- Validado ponta a ponta com uma conta de teste descartável (criada e depois apagada via SQL, pra não mexer de novo na conta MFA do usuário) contra `example.com`: as 5 ferramentas rodaram no mesmo scan, log ao vivo mostrando cada uma com seu prefixo, 10 achados no total corretamente ordenados por severidade.
+- Build e lint passando sem erros.
+
+**Próximo passo:** Fase 6 — relatório exportável (PDF, e opcionalmente Word) a partir dos findings reais já no banco: sumário executivo + detalhamento técnico + plano de remediação priorizado.
 
 ### Sessão 5 — 2026-09-14 — Animação de boot da tela de login
 - Trabalho fora da sequência linear de fases, a pedido do usuário: ele forneceu (de novo — tinha apagado por engano na Sessão 3) o protótipo `sentinela-login-animacao.html` com a animação de boot da logo, pra usar como base real da tela de login.

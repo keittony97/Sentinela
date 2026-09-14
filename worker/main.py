@@ -11,12 +11,24 @@ load_dotenv()
 from fastapi import FastAPI  # noqa: E402
 
 import db  # noqa: E402
-from checks import security_headers  # noqa: E402
+from checks import (  # noqa: E402
+    exposed_files,
+    exposed_ports,
+    security_headers,
+    storage_exposure,
+    subdomains,
+)
 
 POLL_INTERVAL_SECONDS = float(os.environ.get("POLL_INTERVAL_SECONDS", "3"))
 
+# Toda ferramenta aqui é passiva (is_active_tool=false no scan) — nenhuma
+# delas explora nada, só lê o que já está publicamente acessível/indexado.
 TOOL_RUNNERS = {
     "headers_tls": security_headers.run,
+    "subdomains": subdomains.run,
+    "exposed_files": exposed_files.run,
+    "exposed_ports": exposed_ports.run,
+    "storage_exposure": storage_exposure.run,
 }
 
 

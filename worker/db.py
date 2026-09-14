@@ -1,13 +1,8 @@
 import os
 
 import httpx
-import truststore
 
-# Em redes corporativas com proxy TLS próprio (certificado autoassinado na
-# cadeia), o bundle da certifi não confia na CA da empresa. truststore usa a
-# store de certificados do SO (igual o --use-system-ca do Node no app/),
-# em vez de desabilitar a verificação TLS.
-truststore.inject_into_ssl()
+import net  # noqa: F401 — importar aplica o patch de TLS globalmente (ver net.py)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]

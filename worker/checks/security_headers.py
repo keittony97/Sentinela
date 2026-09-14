@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+import net  # noqa: F401 — aplica o patch de TLS (ver net.py)
+
 HEADER_CHECKS = [
     (
         "strict-transport-security",
