@@ -40,6 +40,7 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - testssl.sh (mencionado no CLAUDE.md pra TLS mais profundo — cipher suites, protocolos vulneráveis) não foi implementado. `security_headers.py` só checa expiração do certificado via `ssl` do Python, mais simples que o que testssl.sh faria.
 - Nenhuma tela de gestão/remoção de usuários — o primeiro Admin e todas as contas de teste foram criadas/removidas via SQL direto.
 - Docker não está instalado na máquina de desenvolvimento — `docker-compose.yml`/Dockerfiles (worker) existem e deveriam funcionar, mas só testados rodando os processos direto. `worker/Dockerfile` agora também instala `nmap` via apt — não testado em container ainda.
+- **Cabeçalho de conformidade e rastreabilidade no relatório PDF (novo requisito, ainda não implementado)** — o usuário adicionou essa seção ao `CLAUDE.md` (responsável técnico, ferramentas utilizadas, declaração de metodologia/limites, nota de conformidade LGPD condicional, tudo como template configurável no banco). O relatório da Fase 6 (`ProjectReportDocument.tsx`) ainda não tem nada disso — falta: tabela nova pra guardar o template configurável, lógica pra detectar finding com dado pessoal (CPF/nome/telefone/e-mail/dado sensível) e decidir quando mostrar a nota de LGPD, e a seção em si no PDF. Perguntei ao usuário se quer que eu implemente já.
 
 ## Bugs encontrados e corrigidos nesta sessão
 

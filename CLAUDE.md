@@ -40,6 +40,16 @@ Tela "Scan Geral" por sistema/site cadastrado, com as duas modalidades acima (ag
 - Detalhe expansível por vulnerabilidade: como foi encontrada (ferramenta, request/response, payload, evidência), impacto, como corrigir (recomendação específica), referências (CWE, OWASP Top 10).
 - Relatório completo exportável (PDF, opcionalmente Word): sumário executivo + detalhamento técnico + plano de remediação priorizado.
 
+### Cabeçalho de conformidade e rastreabilidade (obrigatório em todo relatório)
+
+Todo relatório exportado deve abrir com um cabeçalho de conformidade, gerado automaticamente a partir do `audit_log` e dos dados do scan, contendo:
+
+- **Responsável técnico**: nome, matrícula/usuário e perfil (Admin/Pentester) de quem executou o teste, e período (início/fim).
+- **Ferramentas utilizadas**: lista automática das ferramentas efetivamente disparadas naquele scan.
+- **Declaração de metodologia e limites**: texto padrão afirmando que o teste seguiu estritamente a modalidade declarada (Verificação Externa ou Ambiente de Teste) e que **nenhum procedimento intrusivo/exploratório foi realizado além do estritamente necessário para confirmar a existência de cada vulnerabilidade** — sem extração, cópia ou manipulação de dados além do mínimo necessário para evidenciar a falha.
+- **Nota de conformidade com a LGPD** (exibida sempre que o finding envolver dado pessoal — CPF, nome, telefone, e-mail, dados sensíveis etc.): referenciar a **Lei nº 13.709/2018**, art. 6º (princípios de minimização e segurança) e art. 46 (medidas de segurança exigidas do controlador/operador); declarar que eventual dado pessoal visualizado durante o teste foi tratado apenas para fins de confirmação e documentação da falha, sem armazenamento além do necessário ao relatório; e, quando aplicável, recomendar que a organização responsável avalie a necessidade de comunicação à ANPD e aos titulares conforme art. 48, como recomendação técnica — não como afirmação jurídica categórica.
+- Esse texto de conformidade é um **template configurável** (armazenado no banco, não hardcoded no frontend), para poder ser revisado pelo jurídico da organização antes de entrar em produção.
+
 ## LOGS DE EXECUÇÃO (separado do relatório de vulnerabilidades)
 
 Tela própria por scan, independente do relatório de findings:
