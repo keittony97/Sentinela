@@ -5,6 +5,7 @@ import { TerminalWindow } from "@/components/terminal/TerminalWindow";
 import { LegalModeBadge } from "@/components/terminal/LegalModeBadge";
 import { ScanStatusBadge } from "@/components/terminal/ScanStatusBadge";
 import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/auth";
 import { StartScanForm } from "./StartScanForm";
 
 export default async function ProjectDetailPage({
@@ -13,6 +14,7 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string; projectId: string }>;
 }) {
   const { id, projectId } = await params;
+  const session = await requireUser();
   const supabase = await createClient();
 
   const { data: project } = await supabase
@@ -33,7 +35,15 @@ export default async function ProjectDetailPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <TerminalPrompt path={`~/alvos/${target.name}/${project.name}`} className="text-lg" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <TerminalPrompt path={`~/alvos/${target.name}/${project.name}`} className="text-lg" />
+        <a
+          href={`/alvos/${id}/projetos/${projectId}/relatorio`}
+          className="border border-[var(--color-border-bright)] px-3 py-1.5 text-sm text-[var(--color-phosphor)] hover:bg-[var(--color-phosphor)] hover:text-black"
+        >
+          exportar relatório (PDF) »
+        </a>
+      </div>
 
       <TerminalWindow title={`user@sentinela:~/${project.name}$`} accent="cyan">
         <dl className="flex flex-col gap-1 text-sm">
@@ -58,7 +68,15 @@ export default async function ProjectDetailPage({
 
       <TerminalWindow title={`user@sentinela:~/${project.name}/scans$`} accent="amber">
         <div className="flex flex-col gap-4">
-          <StartScanForm targetId={id} projectId={projectId} />
+          <StartScanForm
+            targetId={id}
+            projectId={projectId}
+            canRunActiveTools={
+              session.profile.role === "admin" &&
+              project.legal_mode === "ambiente_teste" &&
+              project.authorization_confirmed
+            }
+          />
 
           <div className="border-t border-[var(--color-border)] pt-4">
             {scans && scans.length > 0 ? (

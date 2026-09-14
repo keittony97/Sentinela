@@ -7,6 +7,7 @@ qualquer modalidade legal.
 """
 
 import uuid
+from urllib.parse import urlparse
 
 import httpx
 
@@ -41,7 +42,14 @@ def run(url: str) -> tuple[list[dict], list[dict]]:
     def log(level: str, message: str) -> None:
         logs.append({"level": level, "message": message})
 
-    base = url.rstrip("/")
+    # Achados de "arquivo exposto" são sobre a raiz do site, não sobre um
+    # endpoint/página específica — descarta path, query string e fragment
+    # da URL do alvo. Sem isso, uma URL com "?a=1&b=2" faz "/backup.sql"
+    # virar parte da query string em vez de um path novo, e servidores que
+    # ecoam a query (ex: endpoints tipo /get) respondem 200 pra qualquer
+    # coisa, gerando falso positivo.
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
     log("info", f"Checando {len(CANDIDATE_PATHS)} caminhos comuns de arquivos sensíveis em {base}")
 
     # Servidores mal configurados às vezes retornam HTTP 200 pra qualquer

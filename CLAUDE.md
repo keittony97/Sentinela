@@ -1,118 +1,237 @@
 # Sentinela — Plataforma de Pentest & Bug Bounty Corporativa
 
-Documento de referência do projeto. Leia junto com `PROGRESSO.md` no início de cada sessão para saber onde o projeto parou. A especificação completa original está em `prompt-sistema-pentest-bugbounty.md`.
+Este arquivo é lido automaticamente pelo Claude Code no início de toda sessão neste repositório. Ele contém o contexto completo do projeto e todas as fases planejadas. Antes de iniciar qualquer trabalho, leia também o `PROGRESSO.md` na raiz do projeto para saber em qual fase estamos e o que já foi concluído.
 
-## O que é
+## CONTEXTO E OBJETIVO
 
-Plataforma interna multiusuário para a equipe testar alvos internos (intranet) e externos (internet), com ou sem login, sob duas modalidades legais estritas — ver seção "Gate de modalidade legal" abaixo, que é a peça central do sistema.
+Construir o **Sentinela**, uma plataforma interna, **multiusuário, de organização única** (sem necessidade de multi-tenant), de pentest e bug bounty para uso da equipe/empresa. Deve permitir testar **links internos (intranet)** e **links externos (internet)**, alvos **com login** e **sem login**. Toda análise precisa declarar explicitamente sob qual modalidade legal está sendo executada, e gerar relatórios técnicos completos com classificação de severidade e orientação de correção.
 
-## Estrutura do repositório
+## BRANDING
 
-- `app/` — aplicação Next.js (frontend + API routes).
-- `worker/` — serviço Python (FastAPI) que processa a fila de scans. Ver seção própria abaixo.
-- `docker-compose.yml` — sobe o worker em container (Docker não está instalado na máquina de dev atual; testado rodando `uvicorn` direto).
-- `PROGRESSO.md` — status das fases, decisões, pendências. Atualizar ao final de cada sessão.
-- `prompt-sistema-pentest-bugbounty.md` — especificação funcional original, não editar; é a fonte da verdade do escopo.
+Nome do produto: **Sentinela**. Usar em todo header/sidebar como prompt de terminal, ex: `sentinela@<nome-da-org>:~$`. Logo tipográfico (monoespaçado) ou glifo simples de "vigia"/olho estilizado.
 
-## Stack
+## PERFIS DE USUÁRIO (RBAC)
 
-- **Frontend/API**: Next.js 16 (App Router, Turbopack), TypeScript, Tailwind CSS v4.
-- **Banco/Auth**: Supabase (Postgres + RLS + Auth), Supabase Cloud na fase inicial, compatível com self-hosted para migração futura.
-- **Worker de scans**: serviço Python separado (FastAPI + fila), containers Docker isolados por execução das ferramentas (ZAP, Nuclei, Nikto, sqlmap, testssl.sh). Ainda não iniciado.
-- **Tudo em Docker/Docker Compose desde o dia 1**, mesmo hospedado em nuvem, para a migração futura para intranet ser troca de servidor, não reescrita.
+- **Admin**: gerencia usuários, aprova alvos/escopos, acessa todos os relatórios.
+- **Pentester/Analista**: cria projetos de teste, executa scans, edita relatórios, sobe evidências manuais.
+- **Visualizador/Gestor**: só visualiza relatórios e status, sem poder disparar scans.
 
-## Convenções do Next.js 16
+Autenticação via Supabase Auth, MFA obrigatório para Admin e Pentester. Organização única — RLS aplicado por boa prática, mas sem a complexidade de isolar múltiplas organizações.
 
-Este projeto foi criado já na v16 (breaking changes relevantes em relação a versões anteriores). Antes de editar código em `app/`, consultar `app/node_modules/next/dist/docs/` (ou `app/AGENTS.md`, mantido automaticamente pelo `next dev`). Pontos que já se aplicam:
-- `params`/`searchParams` são assíncronos (`await`) em páginas/layouts/rotas. Use os helpers `PageProps`/`LayoutProps`/`RouteContext` (gerados por `next typegen`).
-- `next lint` foi removido — lint é via ESLint CLI direto (`npx eslint .`), flat config.
-- Middleware foi renomeado para `proxy` (arquivo `proxy.ts`, export `proxy`).
+## MODOS DE TESTE (núcleo do sistema)
+
+Todo projeto de teste declara, obrigatoriamente, antes de iniciar:
+
+1. **Escopo do alvo**: Intranet (rede interna/VPN) ou Internet (público).
+2. **Autenticação**: Sem login / Com login (credenciais de teste dedicadas, nunca de usuário real de produção).
+3. **Modalidade legal**:
+   - **"Verificação Externa (Legal)"** — testes passivos e de reconhecimento leve, não intrusivos: headers de segurança, exposição de configs/chaves em código público, TLS/certificados (testssl.sh), descoberta de portas abertas e banner grabbing via módulo próprio (Nmap), permissões públicas em bancos/storage expostos, subdomínios públicos. Nenhuma ferramenta ativa/intrusiva (fuzzing, brute-force, exploração) disponível neste modo.
+   - **"Ambiente de Teste"** — exige confirmação explícita de propriedade/autorização do alvo (checkbox + justificativa/nº do termo, vai para o audit log). Libera ferramentas ativas: SQLi/XSS, fuzzing, brute-force controlado de login, scanners de configuração ativa.
+
+Declaração registrada de forma imutável no `audit_log` (usuário, data/hora, relatório vinculado).
+
+## SCAN GERAL (visão de portfólio)
+
+Tela "Scan Geral" por sistema/site cadastrado, com as duas modalidades acima (agendado ou sob demanda). Dashboard por alvo com histórico de scans, tendência de vulnerabilidades e status de correção (aberto / em correção / corrigido / aceito o risco).
+
+## MOTOR DE VULNERABILIDADES E SEVERIDADE
+
+- Severidade: Crítico, Alto, Médio, Baixo, Informativo (CVSS 3.1 ou versão simplificada). Lista sempre com Crítico no topo.
+- Detalhe expansível por vulnerabilidade: como foi encontrada (ferramenta, request/response, payload, evidência), impacto, como corrigir (recomendação específica), referências (CWE, OWASP Top 10).
+- Relatório completo exportável (PDF, opcionalmente Word): sumário executivo + detalhamento técnico + plano de remediação priorizado.
+
+## LOGS DE EXECUÇÃO (separado do relatório de vulnerabilidades)
+
+Tela própria por scan, independente do relatório de findings:
+- Stream ao vivo (WebSocket/Supabase Realtime) do output bruto das ferramentas, linha a linha.
+- Histórico completo salvo por scan, com timestamp, ferramenta de origem e nível (info/warning/erro).
+- Filtro por ferramenta e nível. Download do log bruto (.txt/.log) separado do relatório.
+- Componente de terminal (ex: xterm.js), reforçando a estética visual.
+
+## ARQUITETURA
+
+- **Frontend**: Next.js (App Router) + TypeScript + Tailwind.
+- **Backend/API**: Next.js API routes ou serviço Node separado (regras de negócio: projetos, usuários, relatórios).
+- **Banco**: Supabase (Postgres) com Row Level Security desde o início.
+- **Worker de orquestração de scans** (separado do Next.js): Python (FastAPI + Celery/RQ, fila Redis), disparando OWASP ZAP, Nuclei, Nikto, sqlmap, testssl.sh em containers Docker isolados por execução; normaliza saída em formato único (severidade, evidência, CWE) antes de gravar no banco. Módulos próprios em Python para regras específicas não cobertas pelas ferramentas prontas.
+- **Reconhecimento de portas/serviços (substitui Shodan/Censys)**: módulo próprio em Python que roda **Nmap** contra o alvo já cadastrado (descoberta de portas abertas, banner grabbing, versão de serviço) e **testssl.sh** para certificado/TLS, montando uma "ficha" equivalente ao que o Shodan devolveria — mas gerada na hora, sob demanda, contra um alvo já declarado no sistema, sem custo de API/créditos mensais e sem escanear IPs de terceiros não relacionados ao projeto.
+- **Fila/Jobs assíncronos**: Redis + status em tempo real via Supabase Realtime/WebSocket.
+- **Isolamento de rede**: worker de "Ambiente de Teste" roda isolado (VPC separada ou container sem acesso à rede de produção).
+
+### Estratégia de hospedagem: online agora → local (intranet) no futuro
+
+- Tudo em Docker/Docker Compose desde o dia 1, mesmo rodando em nuvem.
+- Supabase Cloud agora, schema/RLS/functions compatíveis com Supabase self-hosted (Docker Compose oficial) para migração futura.
+- Next.js sem features exclusivas de plataforma de deploy — roda via `next start` em container padrão.
+- Worker de scan já nasce em container Docker isolado — peça mais simples de mover.
+- Toda configuração via variáveis de ambiente (nunca hardcoded).
+- Fase inicial: Supabase Cloud + Vercel/VPS simples (frontend) + VPS pequena dedicada só para o worker.
+- Fase futura: servidor/VM na intranet, stack completa via Docker Compose (Supabase self-hosted + Next.js + worker), dump do banco restaurado, DNS interno.
+
+## MODELO DE DADOS (ponto de partida)
+
+- `organizations`, `users` (com role), `targets` (url, tipo intranet/internet, dono do ativo)
+- `projects` (vincula target + modo legal/teste + status de autorização)
+- `scans` (tipo, ferramenta(s), status, timestamps)
+- `findings` (severidade, CWE, evidência, recomendação, status de remediação, vinculado ao scan)
+- `audit_log` (declarações de modalidade, autorizações, quem rodou o quê)
+
+## TELAS PRINCIPAIS (MVP)
+
+1. Login/MFA
+2. Dashboard geral (alvos, status, vulnerabilidades críticas em aberto)
+3. Cadastro de novo alvo/projeto (com o gate de modalidade legal)
+4. Execução de scan (ferramentas disponíveis conforme o modo) + log de execução em tempo real
+5. Relatório de resultados (lista + detalhe expansível + export)
+6. Histórico/tendência por alvo
+7. Gestão de usuários e permissões (Admin)
+
+## VISUAL/UX — Estética "Hacker de Filme"
+
+- Tema escuro puro (preto/quase-preto), fonte monoespaçada (JetBrains Mono, Fira Code) em toda a interface.
+- Paleta verde fosforescente sobre preto (+ âmbar/ciano de acento); crítico em vermelho vibrante quebrando o padrão de propósito.
+- Cursor piscando, efeito de digitação em telas de carregamento/scan, bordas tipo ASCII/box-drawing, scanlines/glow sutil (CRT), sem prejudicar legibilidade.
+- Cards em formato de janela de terminal (barra de título `user@target:~$`), não cards brancos com sombra.
+- Gráficos mantêm a paleta (linhas verdes/âmbar em fundo preto).
+- Manter contraste e acessibilidade WCAG AA apesar do estilo.
+
+## IDENTIDADE VISUAL — LOGO
+
+O Sentinela tem três versões de logo, todas na paleta verde fosforescente (#33ff66) sobre fundo escuro quase-preto (#04120a), com o motivo central de "mira/alvo" (representando escaneamento) e cantos em L estilo viewfinder de câmera/scanner. O ponto central da mira é vermelho (#ff3b3b) — mesma lógica de quebra de padrão usada nas severidades críticas do resto do sistema.
+
+- **Logo principal** (quadrado com o nome "sentinela" abaixo + cursor de terminal piscando): usar na tela de login e em materiais institucionais/splash.
+- **Ícone isolado** (só a mira, sem texto): usar como favicon, avatar, ícone de app/PWA, e em qualquer lugar onde o espaço for muito reduzido.
+- **Versão horizontal** (ícone compacto + nome ao lado): usar no header/topbar e na sidebar do dashboard, onde o espaço é uma faixa estreita.
+
+Os três arquivos SVG ficam versionados no repositório em `/public/brand/` (ex: `logo-principal.svg`, `logo-icone.svg`, `logo-horizontal.svg`).
+
+## ANIMAÇÃO DA TELA DE LOGIN
+
+Ao carregar a tela de login, o logo principal do Sentinela deve ser "montado" com uma animação que reforça a estética de terminal/boot de sistema, não um simples fade-in genérico. Sequência (aprox. 2.5–3s total, pode ser pulada com qualquer tecla/clique):
+
+1. Tela preta. Aparece o contorno do quadrado do logo (stroke) se desenhando com efeito de "traço" (stroke-dashoffset animado), como se estivesse sendo desenhado por um plotter.
+2. Os quatro cantos em L do viewfinder piscam/acendem em sequência rápida (canto a canto, ~80ms de intervalo entre eles), como se o sistema estivesse "calibrando" a mira.
+3. O círculo e as linhas da mira central se desenham do centro para fora, terminando com o ponto vermelho central "acendendo" com um leve pulso (scale 0.5 → 1, opacity 0 → 1).
+4. O nome "sentinela" aparece com efeito de digitação (typing effect), letra por letra, como se estivesse sendo digitado em um terminal, terminando com o cursor verde piscando ao lado (loop de piscar contínuo, mesmo depois da animação principal terminar).
+5. Por último, a tagline "pentest & bug bounty" aparece com um fade rápido.
+6. Após a sequência, o formulário de login (campos de e-mail/senha, MFA) aparece com um fade+slide sutil de baixo para cima, e o logo reduz suavemente de tamanho e migra para o topo da tela, como cabeçalho fixo.
+
+Requisitos técnicos:
+- Implementar com CSS animations/keyframes ou uma lib leve (ex: Framer Motion, se já estiver no projeto) — evitar dependência pesada só para essa animação.
+- Deve respeitar `prefers-reduced-motion`: se o usuário tiver essa preferência ativada no sistema operacional, pular direto para o estado final (logo estático + formulário visível), sem nenhuma das animações de desenho/digitação.
+- A animação roda uma vez por carregamento de página (não repete ao errar login, por exemplo) — só o cursor do "sentinela" continua piscando em loop.
+- Performance: usar apenas `transform`, `opacity` e `stroke-dashoffset` para animar (evitar animar `width`/`height`/`top`/`left`, que forçam reflow).
+
+
+
+Trabalhe uma fase por vez. Ao concluir uma fase, atualize o `PROGRESSO.md` antes de encerrar a sessão.
+
+### Fase 1 — Esqueleto + identidade visual
+Shell do Next.js com o tema "terminal hacker" completo: cores, fonte, componente de janela de terminal reutilizável, efeito de digitação. Sem lógica de negócio ainda.
+
+### Fase 2 — Modelo de dados + auth + RLS
+Subir Supabase, criar as tabelas do modelo de dados, ativar RLS, configurar Supabase Auth com MFA e os três perfis (Admin, Pentester, Visualizador).
+
+### Fase 3 — Cadastro de alvo + gate de modalidade legal
+Tela de cadastro de alvo/projeto com a declaração obrigatória de escopo, autenticação e modalidade legal (incluindo o campo de justificativa/autorização para "Ambiente de Teste"), gravando no `audit_log`.
+
+### Fase 4 — Primeira ferramenta passiva, ponta a ponta
+Uma única ferramenta simples (ex: verificação de headers de segurança/TLS) integrada do início ao fim: disparar → log de execução em tempo real → salvar finding → aparecer no relatório. Valida toda a arquitetura (fila, worker, realtime, banco) em escala pequena.
+
+### Fase 5 — Demais ferramentas do modo "Verificação Externa"
+Reaproveitar o pipeline validado na Fase 4 para as demais ferramentas passivas.
+
+### Fase 6 — Relatório exportável
+Geração de PDF (e opcionalmente Word) a partir dos findings reais já no banco.
+
+### Fase 7 — Modo "Ambiente de Teste" (ferramentas ativas)
+Integração de ZAP/Nuclei/sqlmap etc., isolamento de rede do worker, permissões mais finas por perfil.
+
+### Fase 8 — Migração para hospedagem local/intranet
+Quando o produto estiver validado: subir a stack completa via Docker Compose num servidor da intranet, Supabase self-hosted, restaurar dump, DNS interno.
+
+---
+
+## Notas operacionais e de implementação
+
+Tudo abaixo é conhecimento acumulado durante a implementação (Fases 1–7), mantido aqui pra não se perder entre sessões — as seções acima são a especificação/planejamento; esta é a realidade de como foi construído. Ver `PROGRESSO.md` pro checklist de fases e o log sessão a sessão.
+
+### Estrutura do repositório
+
+- `app/` — aplicação Next.js 16 (App Router, Turbopack, TypeScript, Tailwind v4).
+- `worker/` — serviço Python (FastAPI) que processa a fila de scans.
+- `supabase/` — migrations do schema (aplicar sempre via nova migração, nunca editando uma já aplicada).
+- `docker-compose.yml` — sobe o worker em container (Docker não está instalado na máquina de dev atual; testado rodando `uvicorn`/`python` direto).
+
+### Convenções do Next.js 16
+
+Projeto criado já na v16 (breaking changes em relação a versões anteriores). Antes de editar código em `app/`, consultar `app/node_modules/next/dist/docs/` ou `app/AGENTS.md`. Pontos que já se aplicam:
+- `params`/`searchParams` são assíncronos (`await`) em páginas/layouts/rotas/route handlers.
+- `next lint` foi removido — lint via ESLint CLI direto (`npx eslint .`), flat config.
+- Middleware foi renomeado para `proxy` (arquivo `app/src/proxy.ts`, export `proxy`).
 - Turbopack é o padrão para `dev` e `build`.
 
-## Gate de modalidade legal (não negociável)
+### Supabase — projeto, schema e auth
 
-Todo projeto de teste declara, antes de iniciar, de forma imutável em audit log:
-1. Escopo do alvo: Intranet ou Internet.
-2. Autenticação: sem login / com login (credenciais de teste dedicadas, nunca de usuário real de produção).
-3. Modalidade legal:
-   - **Verificação Externa (Legal)** — só ferramentas passivas/não intrusivas. Nenhuma ferramenta ativa disponível neste modo.
-   - **Ambiente de Teste** — exige checkbox + justificativa/nº de autorização (vai para audit log). Só aqui ficam liberadas ferramentas ativas (SQLi/XSS, fuzzing, brute-force, etc).
+- Projeto: `sentinela` (ref `fiejgbbpkxmkuwcfodpv`, região `sa-east-1`). Gerenciado via `supabase` CLI (`npx supabase`, projeto vinculado em `supabase/`).
+- Tabelas: `organizations`, `users` (perfil 1:1 com `auth.users`, tem `username`), `targets`, `projects`, `scans`, `findings`, `audit_log`, `scan_logs`. RLS habilitado em todas, usando funções security definer: `current_org_id()`, `current_role()`, `mfa_satisfied()`, `can_write()`, `is_admin()`.
+- **Login é por usuário/senha, não e-mail** (decisão do usuário). Cada conta tem `username` em `public.users` e um e-mail técnico sintético em `auth.users` (`<username>@users.sentinela.local`). A função `public.email_for_username(username)` (security definer) resolve usuário → e-mail técnico antes de `signInWithPassword`. Ver `app/src/app/login/LoginForm.tsx` — é tudo client-side (não server action), porque também trata o desafio de MFA (challenge/verify) pra contas que já têm fator verificado, não só o enrollment inicial.
+- **Gate de modalidade legal reforçado no banco**: `projects` tem `CHECK` exigindo `authorization_confirmed` + justificativa quando `legal_mode='ambiente_teste'`. Trigger `enforce_scan_legal_mode` em `scans` (before insert/update) bloqueia `is_active_tool=true` a menos que o projeto esteja `ambiente_teste` autorizado **e** o usuário que disparou (`triggered_by`) seja `admin` — e registra automaticamente no `audit_log` (`action='active_scan_triggered'`, só no INSERT, não a cada UPDATE de status).
+- **Audit log automático**: criar/atualizar a modalidade legal de um projeto, ou disparar um scan ativo, grava sozinho no `audit_log` via trigger. Tabela é apêndice-only (sem policy de UPDATE/DELETE, privilégios revogados de `authenticated`/`anon`).
+- **MFA obrigatório**: `can_write()`/`is_admin()` exigem `auth.jwt()->>'aal' = 'aal2'`. Ferramentas ativas exigem além disso `role='admin'`.
+- Chaves em `app/.env.local` (gitignored): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable, segura pro cliente). A `service_role` key vive só em `worker/.env` (gitignored) — nunca no app Next.js/browser.
+- Tipos TypeScript em `app/src/lib/supabase/database.types.ts`, gerados via `supabase gen types typescript --project-id <ref>` — regenerar depois de qualquer migração nova.
+- **`REPLICA IDENTITY FULL`** em `scans`, `scan_logs` e `findings` — com a identidade padrão (só chave primária), um `UPDATE` que só muda `status`/`started_at`/`finished_at` não carrega `organization_id` no WAL, e a Realtime precisa dessa coluna pra avaliar a policy de RLS; sem ela no payload, o evento é descartado silenciosamente. Aplicar em qualquer tabela nova que entrar na publicação `supabase_realtime` e seja atualizada por colunas fora das usadas nas policies.
 
-Essa trava é a parte mais fácil de errar sem perceber — qualquer tela ou endpoint que dispare uma ferramenta ativa tem que checar a modalidade do projeto no backend, não só esconder o botão no frontend.
+### Peculiaridade de rede local (ambiente corporativo deste usuário)
 
-## RBAC
+A rede onde este projeto é desenvolvido intercepta TLS com certificado próprio em alguns domínios (proxy corporativo) e bloqueia a porta direta do Postgres. Isso já mordeu várias vezes:
+1. Downloads de binários nativos (SWC do Next, Chromium do Playwright) — resolvido com `npm install` direto do pacote, ou `NODE_TLS_REJECT_UNAUTHORIZED=0` pontual só durante o download.
+2. Chamadas HTTPS do processo Node do Next (server actions → Supabase) — resolvido com `NODE_OPTIONS=--use-system-ca` (Node passa a confiar na store de certificados do Windows). Já embutido nos scripts `dev`/`build`/`start` de `app/package.json` via `cross-env` — não remover.
+3. Mesmo problema do lado Python: `httpx`/`ssl` por padrão usam o bundle da `certifi`. Resolvido com `truststore.inject_into_ssl()`, centralizado em `worker/net.py` — todo módulo que faz HTTPS direto (`db.py`, cada `checks/*.py` que usa `httpx`) importa `net` explicitamente no topo (`import net  # noqa: F401`). Não depender de "algum outro import antes já ter feito isso" — isso já causou um bug real ao testar um `checks/*.py` isolado sem passar por `db.py`.
+4. `supabase db push`/`supabase link` com conexão direta ao Postgres dão `ECONNRESET` — porta bloqueada. Alternativa: aplicar migrações via API de gerenciamento do Supabase sobre HTTPS (`POST https://api.supabase.com/v1/projects/{ref}/database/query`, corpo `{"query": "<sql>"}`), e inserir manualmente a versão em `supabase_migrations.schema_migrations` depois. `supabase gen types typescript` também usa essa mesma API HTTPS, funciona normal.
 
-Organização única (sem multi-tenant no MVP, mas manter RLS por boa prática). Perfis: Admin (gerencia usuários, aprova alvos, vê tudo), Pentester/Analista (cria projetos, roda scans, edita relatórios), Visualizador/Gestor (só leitura). MFA obrigatório para Admin e Pentester — imposto na própria RLS (ver abaixo), não só na UI.
+### Worker de scans
 
-## Supabase — projeto, schema e auth
+- `worker/main.py`: FastAPI (só `/health`) com loop de polling em background (`asyncio`) — a cada `POLL_INTERVAL_SECONDS` (padrão 2-3s), busca o scan mais antigo `status='na_fila'` e reivindica atomicamente via `UPDATE ... WHERE status='na_fila'`. Sem Redis/Celery — fila simples via polling na própria tabela `scans` (decisão explícita do usuário).
+- `worker/db.py`: cliente fino sobre a API REST do PostgREST (`httpx`), autenticado com `service_role` key — bypassa RLS de propósito (processa scans de qualquer org).
+- `worker/test_checks.py` / `worker/test_injection.py` (descartável, recriar se precisar): testar um módulo de `checks/` isolado contra uma URL, sem passar pelo banco/fila/UI.
+- Ferramentas em `worker/checks/`, todas com o contrato `run(url) -> (logs, findings)`, registradas em `TOOL_RUNNERS` em `main.py`. Lista espelhada pro frontend em `app/src/lib/scanTools.ts` (`PASSIVE_TOOLS`/`ACTIVE_TOOLS`) — manter sincronizado.
 
-- Projeto: `sentinela` (ref `fiejgbbpkxmkuwcfodpv`, região `sa-east-1`), na organização Supabase do usuário. Gerenciado via `supabase` CLI (`npx supabase`, projeto vinculado em `supabase/`).
-- Schema completo em `supabase/migrations/` (aplicar sempre via nova migração, nunca editando uma já aplicada). Tabelas: `organizations`, `users` (perfil 1:1 com `auth.users`), `targets`, `projects`, `scans`, `findings`, `audit_log`. RLS habilitado em todas, usando as funções `current_org_id()`, `current_role()`, `mfa_satisfied()`, `can_write()`, `is_admin()` (security definer, evitam recursão de RLS).
-- **Login é por usuário/senha, não e-mail** (decisão do usuário, diverge do prompt original que citava Supabase Auth "padrão"). Cada conta tem um `username` em `public.users` e um e-mail técnico sintético em `auth.users` (`<username>@users.sentinela.local`, nunca exibido nem usado para enviar nada). A função `public.email_for_username(username)` (security definer, `grant execute` para `anon`/`authenticated`) resolve usuário → e-mail técnico antes de chamar `signInWithPassword`. Ver `app/src/app/login/actions.ts`.
-- **Gate de modalidade legal reforçado no banco**: `projects` tem um `CHECK` que exige `authorization_confirmed` + justificativa quando `legal_mode = 'ambiente_teste'`; `scans.is_active_tool = true` só passa pelo trigger `enforce_scan_legal_mode` se o projeto estiver autorizado em `ambiente_teste`. Não depende só do frontend.
-- **Audit log automático**: criar/atualizar a modalidade legal de um projeto grava sozinho uma entrada em `audit_log` via trigger — não depende do código da aplicação lembrar de logar. `audit_log` não tem policy de UPDATE/DELETE e os privilégios foram revogados (`revoke update, delete ... from authenticated, anon`) — é apêndice-only de verdade.
-- **MFA obrigatório**: `can_write()`/`is_admin()` exigem `auth.jwt()->>'aal' = 'aal2'` (segundo fator já verificado na sessão) além do role. Isso significa que Admin/Pentester **não conseguem** criar/editar `targets`/`projects`/`scans`/`findings` até fazer enrollment de MFA (TOTP) pela API do Supabase Auth — ainda não há tela para isso no app (entra numa fase futura). É comportamento esperado, não bug.
-- Chaves do projeto em `app/.env.local` (gitignored): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave `publishable`, segura para o cliente). A `service_role`/secret key foi obtida na Fase 4 (o worker Python precisa bypassar RLS pra processar scans de qualquer org) e vive só em `worker/.env` (gitignored) — nunca no app Next.js, nunca no browser, nunca commitada.
-- Primeira conta Admin criada diretamente via SQL (inserção em `auth.users`/`auth.identities`, contornando a necessidade da service role key): usuário `keittony.ferreira`. A senha foi definida pelo usuário e não fica registrada em nenhum arquivo do repositório.
+**Passivas** (`is_active_tool=false`, disponíveis em qualquer modalidade legal):
+- `security_headers.py` (`headers_tls`) — headers de segurança + validade do certificado TLS (via `ssl` do Python, sem depender de testssl.sh).
+- `subdomains.py` (`subdomains`) — Certificate Transparency via crt.sh, nunca toca o alvo.
+- `exposed_files.py` (`exposed_files`) — caminhos sensíveis bem conhecidos (`.env`, `.git/config`, backups...), com sondagem de baseline num caminho aleatório pra não confundir "soft 404" com arquivo de verdade. **Importante**: sempre descarta path/query/fragment da URL do alvo antes de concatenar os caminhos candidatos (`urlparse` → só `scheme://netloc`) — um alvo com `?a=1&b=2` na URL, concatenado ingenuamente, vira parte da query string em endpoints que ecoam a query (ex: `/get` de APIs de teste), gerando falso positivo em massa. Já mordeu uma vez.
+- `port_scan.py` (`port_scan`) — **substitui a abordagem via Shodan/Censys** (existiu brevemente como `exposed_ports.py`, removido). Roda Nmap (`-sT`, TCP connect scan, não precisa de privilégio elevado nem driver de captura de pacotes) direto contra o alvo já cadastrado — sem custo de API/créditos, sem depender de dados de terceiros desatualizados, sem escanear IPs não relacionados ao projeto. Binário localizado via `shutil.which("nmap")` ou fallback pro caminho padrão do Windows; se não encontrado, registra achado informativo em vez de falhar. `worker/Dockerfile` instala `nmap` via apt pro deploy em container.
+- `storage_exposure.py` (`storage_exposure`) — testa nomes de bucket S3/GCS derivados do domínio do alvo. Severidade fica em `medio` (não `alto`) com aviso explícito de "confirmar propriedade" — nomes de bucket são um namespace global, então bater o nome não prova que pertence à organização do alvo (confirmado na prática: achou um bucket real de terceiro sem relação nenhuma com o alvo testado).
 
-## Peculiaridade de rede local (ambiente corporativo deste usuário)
+**Ativas** (`is_active_tool=true`, só em projeto `ambiente_teste` autorizado + usuário `admin` — reforçado no banco via trigger, checado de novo no worker por defesa em profundidade, e escondido na UI se as condições não baterem):
+- `basic_injection_probe.py` (`basic_injection_probe`) — sonda de XSS refletido (marcador com tags HTML, verifica se volta sem escape) e SQLi baseado em erro (aspas simples + padrões de mensagem de erro de banco conhecidos) nos parâmetros de query já existentes na URL do alvo. Não explora nada de verdade (sem UNION SELECT, sem blind/time-based, sem brute-force). Se a URL não tem parâmetros, registra achado informativo em vez de não fazer nada.
 
-A rede onde este projeto é desenvolvido intercepta TLS com um certificado próprio (proxy corporativo) e também bloqueia a porta direta do Postgres (usada pelo `supabase db push`). Isso já mordeu três vezes:
-1. Download do binário nativo do SWC do Next — resolvido instalando `@next/swc-win32-x64-msvc` via `npm install` direto (que já respeita `strict-ssl=false`).
-2. Download do Chromium do Playwright — precisou de `NODE_TLS_REJECT_UNAUTHORIZED=0` só durante o `playwright install`.
-3. Chamadas HTTPS feitas pelo processo Node do Next.js (server actions chamando a API do Supabase) — resolvido de forma correta (sem desabilitar verificação TLS) com a flag `--use-system-ca` do Node 24, que faz o Node confiar na store de certificados do Windows (onde a CA corporativa já está instalada), igual o `curl` já fazia. Os scripts `dev`/`build`/`start` em `app/package.json` usam `cross-env NODE_OPTIONS=--use-system-ca` por causa disso — não remover.
-4. `supabase db push`/`supabase link` com conexão direta ao Postgres (porta do pooler) dão `ECONNRESET` nessa rede — a porta é bloqueada. Alternativa que funciona: aplicar migrações via API de gerenciamento do Supabase sobre HTTPS (`POST https://api.supabase.com/v1/projects/{ref}/database/query` com o access token, corpo `{"query": "<sql>"}`), que passa pela mesma porta 443 liberada. Depois de aplicar, inserir manualmente a versão em `supabase_migrations.schema_migrations` para manter o histórico do CLI consistente (senão o CLI tenta reaplicar do zero quando a porta do Postgres estiver acessível). `supabase gen types typescript --project-id <ref>` também funciona normalmente nessa rede (usa a mesma API HTTPS, não a porta do Postgres).
-
-## Worker de scans (a partir da Fase 4)
-
-- `worker/main.py`: app FastAPI (só `/health` por enquanto) que sobe um loop de polling em background (`asyncio`) — a cada `POLL_INTERVAL_SECONDS` (padrão 2s), busca em `scans` o mais antigo com `status='na_fila'` e reivindica atomicamente via `UPDATE ... WHERE status='na_fila'` (evita corrida se um dia rodar mais de uma instância). Sem Redis/Celery por decisão explícita do usuário — fila simples via polling na própria tabela `scans`, mais simples de operar no estágio atual.
-- `worker/db.py`: cliente fino sobre a API REST do PostgREST (`httpx`, sem SDK pesado), autenticado com a `service_role` key — o worker processa scans de qualquer org, então precisa bypassar RLS. Chave vive só em `worker/.env` (gitignored), nunca no app Next.js/browser.
-- Ferramentas passivas em `worker/checks/` (todas seguem o contrato `run(url) -> (logs, findings)`, registradas em `TOOL_RUNNERS` em `main.py`; a lista espelhada pro frontend fica em `app/src/lib/scanTools.ts` — manter as duas em sincronia):
-  - `security_headers.py` (`headers_tls`) — GET normal + inspeção de headers de segurança (HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, exposição do header Server) e do certificado TLS (dias até expirar).
-  - `subdomains.py` (`subdomains`) — Certificate Transparency via crt.sh, 100% passivo (nunca toca o alvo). Sinaliza subdomínios com nome potencialmente sensível (dev/staging/homolog/admin/...).
-  - `exposed_files.py` (`exposed_files`) — GET em caminhos bem conhecidos (`.env`, `.git/config`, backups, etc.), com uma sondagem de baseline num caminho aleatório primeiro pra não confundir "soft 404" (servidor que retorna HTTP 200 pra qualquer URL) com um arquivo de verdade.
-  - `exposed_ports.py` (`exposed_ports`) — consulta passiva ao Shodan (nunca faz port scan direto). Requer `SHODAN_API_KEY` em `worker/.env`; sem ela, registra um achado informativo dizendo que foi pulada em vez de falhar o scan.
-  - `storage_exposure.py` (`storage_exposure`) — testa nomes de bucket S3/GCS derivados do domínio do alvo. **Importante**: nomes de bucket são um namespace global, então um "achado" aqui não prova que o bucket pertence à organização — a severidade fica em `medio` (não `alto`) e o título/descrição deixam isso explícito, pedindo confirmação manual de propriedade antes de tratar como real.
-- `worker/test_checks.py` — script de desenvolvimento pra testar qualquer módulo de `checks/` isoladamente contra uma URL, sem precisar passar pelo banco/fila/UI: `python test_checks.py https://exemplo.com`. Útil pra iterar rápido numa ferramenta nova antes de plugar no pipeline completo.
-- **`worker/net.py`**: patch de confiança de TLS (`truststore.inject_into_ssl()`), mesmo problema de rede corporativa do app Next (`--use-system-ca`), só que do lado Python — `httpx`/`ssl` por padrão usam o bundle da `certifi`, que não confia na CA da rede local. Todo módulo que faz chamada HTTPS direta (`db.py` e cada `checks/*.py`) importa `net` explicitamente (`import net  # noqa: F401`) — é idempotente e o patch é global por processo, mas cada arquivo declara a própria dependência em vez de confiar que "algum outro import antes" já cuidou disso (isso mordeu ao testar `checks/` isoladamente via `test_checks.py`, que não passava por `db.py`).
+**Pendente/não implementado**: testssl.sh (a spec menciona pra TLS mais profundo — cipher suites, protocolos vulneráveis; hoje `security_headers.py` só checa expiração do certificado via `ssl` do Python, mais simples). ZAP/Nuclei/sqlmap de verdade (a spec original os menciona; dado o esforço de integração — Docker por execução, isolamento de rede — e que `basic_injection_probe.py` já cobre o caso de uso principal de SQLi/XSS de forma mais leve, ficou de fora por ora). Fuzzing e brute-force de login controlado também não implementados.
 
 ### Tela de execução de scan em tempo real
 
-- `/alvos/[id]/projetos/[projectId]` dispara o scan (`startScan`, insere em `scans` com `status` default `na_fila`) e redireciona para `/alvos/[id]/projetos/[projectId]/scans/[scanId]`. A partir da Fase 5, `StartScanForm` mostra um checkbox por ferramenta passiva (`PASSIVE_TOOLS` em `app/src/lib/scanTools.ts`, todas marcadas por padrão) em vez de rodar só `headers_tls`; `tools_used` do scan vira a lista selecionada. A action valida que cada valor recebido está em `PASSIVE_TOOL_IDS` antes de gravar.
-- Essa tela (`ScanLiveView.tsx`, client component) escuta `scan_logs`/`scans`/`findings` via Supabase Realtime (Postgres Changes) **e também reconcilia via fetch direto** assim que a inscrição conecta, além de um poll de segurança a cada 2s enquanto o scan não terminar. Isso não é redundância por paranoia: na prática, o worker (poll a cada 2s) processa scans simples mais rápido do que o navegador consegue abrir o WebSocket da Realtime e se inscrever — eventos que acontecem antes da inscrição ficar ativa **não são entregues retroativamente**. Sem o fallback, a tela ficava presa em "na fila" indefinidamente mesmo com o scan já concluído no banco. Ao adicionar novas telas com Realtime, replicar esse padrão (inscrever + reconciliar + poll de segurança até o estado ser terminal), não confiar só no evento chegar a tempo.
-- **`REPLICA IDENTITY FULL`** em `scans`, `scan_logs` e `findings` (migração `20260914161500`) — com a identidade padrão (só chave primária), um `UPDATE` que só muda `status`/`started_at`/`finished_at` não carrega `organization_id` no WAL, e a Realtime precisa dessa coluna pra avaliar a policy de RLS (`organization_id = current_org_id()`); sem ela no payload, o evento é descartado silenciosamente. Se uma tabela nova entrar na publicação `supabase_realtime` e for atualizada por colunas que não incluem as usadas nas policies de RLS, aplicar `REPLICA IDENTITY FULL` nela também.
+- `/alvos/[id]/projetos/[projectId]` dispara o scan (`startScan`, insere em `scans`) e redireciona para `/alvos/[id]/projetos/[projectId]/scans/[scanId]`. `StartScanForm` mostra checkbox por ferramenta passiva (todas marcadas por padrão) e, condicionalmente (`canRunActiveTools` calculado na page.tsx a partir de `session.profile.role` + `project.legal_mode` + `project.authorization_confirmed`), uma seção separada de ferramentas ativas (desmarcadas por padrão, destacada em vermelho).
+- `ScanLiveView.tsx` (client component) escuta `scan_logs`/`scans`/`findings` via Supabase Realtime **e também reconcilia via fetch direto** assim que a inscrição conecta, mais um poll de segurança a cada 2s enquanto o scan não terminar. Necessário na prática: o worker processa scans simples mais rápido do que o navegador abre o WebSocket da Realtime e se inscreve — eventos antes da inscrição ficar ativa não são entregues retroativamente. Replicar esse padrão (inscrever + reconciliar + poll até estado terminal) em qualquer tela nova com Realtime.
+- Scans com várias ferramentas selecionadas rodam **sequencialmente** no worker (não em paralelo) — um scan com 5-6 ferramentas pode levar 60-90s+. Isso é esperado, não bug; se a UX incomodar, paralelizar a execução das ferramentas dentro de um scan é uma melhoria futura possível.
 
-## Padrões de UI autenticada (a partir da Fase 3)
+### Relatório exportável (PDF) — Fase 6
 
-- Rotas autenticadas ficam em `app/src/app/(app)/` (route group — não aparece na URL). O layout desse grupo chama `requireUser()` (`app/src/lib/supabase/auth.ts`, memoizado por request com `cache()`) e redireciona para `/login` se não houver sessão; ele também renderiza o `AppHeader` compartilhado (usuário, role, aviso de MFA pendente, nav, sair). Toda página nova autenticada entra dentro desse grupo, não fora dele.
-- `canWrite(session)` (mesmo arquivo) replica a regra da RLS (`role in (admin,pentester) and aal2`) só para dar uma mensagem de erro amigável na UI antes de tentar o INSERT — a garantia de verdade continua sendo a RLS/CHECK no banco, nunca confiar só nessa checagem client/server-side da UI.
-- Erros de banco viram mensagem amigável via `friendlyDbError()` (`app/src/lib/supabase/errors.ts`) — adicionar novos casos ali conforme novas constraints/triggers forem criadas, em vez de deixar o erro cru do Postgres vazar pra UI.
-- Tipos do schema ficam em `app/src/lib/supabase/database.types.ts`, gerados via `supabase gen types typescript` (regenerar depois de qualquer migração nova) e plugados nos clients (`createClient<Database>`).
+- `@react-pdf/renderer` (não Puppeteer/Playwright) — gera PDF puro via componentes React próprios (`Document`/`Page`/`View`/`Text`), sem precisar de Chromium bundlado, mais leve pra deploy serverless/Vercel.
+- `app/src/lib/pdf/ProjectReportDocument.tsx` — capa (dark, branding) + sumário executivo (contagem por severidade, lista de scans incluídos) + detalhamento técnico (um bloco por finding, ordenado por severidade) + plano de remediação priorizado. Usa fontes built-in do PDF (Helvetica/Courier) — sem registrar fonte customizada, evita depender de fetch de rede na hora de gerar o PDF.
+- Route handler `app/src/app/(app)/alvos/[id]/projetos/[projectId]/relatorio/route.ts` — busca projeto/alvo/scans/findings (RLS já escopa por org), renderiza via `renderToBuffer`, devolve como `application/pdf` com `Content-Disposition: attachment`. O relatório é por **projeto**, agregando todos os scans desse projeto (não por scan individual).
 
-## Identidade visual — "hacker de filme"
+### Padrões de UI autenticada
 
-Já implementada no esqueleto (`app/src/app/globals.css`, `app/src/components/terminal/`):
-- Fundo preto/quase-preto, fonte monoespaçada (JetBrains Mono) em toda a UI.
-- Paleta: verde fosforescente (`--color-phosphor`) como cor principal, âmbar e ciano como acentos, severidades com cores próprias (crítico vermelho quebra o verde de propósito).
-- Componentes reutilizáveis: `TerminalWindow` (janela estilo terminal com barra de título), `TerminalPrompt` (`user@host:path$`), `TypingText` (efeito de digitação), `SeverityBadge` (Crítico/Alto/Médio/Baixo/Informativo).
-- Scanlines/CRT sutis via overlay global em `layout.tsx`, cuidado para não prejudicar contraste (WCAG AA).
-- Ao criar novas telas, reusar esses componentes em vez de criar cards genéricos brancos/sombra.
+- Rotas autenticadas em `app/src/app/(app)/` (route group). O layout chama `requireUser()` (`app/src/lib/supabase/auth.ts`, memoizado por request com `cache()` do React) e redireciona pra `/login` se não houver sessão; renderiza o `AppHeader` compartilhado (usuário, role, aviso de MFA pendente, nav, sair).
+- `canWrite(session)` (mesmo arquivo) replica a regra da RLS só pra dar mensagem de erro amigável na UI antes do INSERT — a garantia de verdade é sempre a RLS/CHECK/trigger no banco.
+- Erros de banco viram mensagem amigável via `friendlyDbError()` (`app/src/lib/supabase/errors.ts`).
+- Identidade visual "hacker de filme" já implementada (`app/src/app/globals.css`, `app/src/components/terminal/`): fundo preto, JetBrains Mono, verde fosforescente (`--color-phosphor`) + âmbar/ciano de acento, `TerminalWindow`/`TerminalPrompt`/`TypingText`/`SeverityBadge`/`ScopeBadge`/`LegalModeBadge`/`ScanStatusBadge`. Reusar esses componentes em telas novas em vez de criar cards genéricos.
+- **Animação de boot da tela de login** (`app/src/app/login/LoginBoot.tsx` + seção "Boot animation da logo" em `globals.css`): portada do protótipo HTML que o usuário forneceu (`sentinela-login-animacao.html`, na raiz — só referência histórica, o que importa já está no código). Sequência via classes CSS acumuladas + timers, pulável com clique/tecla, respeita `prefers-reduced-motion`. Usa os tokens de cor já existentes no app (não a paleta ligeiramente diferente do protótipo) pra não ter duas paletas quase-idênticas coexistindo. Ainda faltam as variantes estáticas do logo em SVG (favicon, header/topbar) — só a versão animada da tela de login foi feita.
 
-## Identidade visual — logo e animação de boot do login (implementado)
+### Ambiente de desenvolvimento local
 
-O usuário forneceu um protótipo HTML autônomo (`sentinela-login-animacao.html`, na raiz — reapareceu depois de ele ter apagado por engano; se sumir nas próximas sessões, o que importa já está portado no código abaixo, não precisa dele para nada além de referência histórica) com a animação de boot da logo. Portado para React em `app/src/app/login/`:
-
-- `LoginBoot.tsx` — client component que controla a sequência via `setTimeout` (mesmos tempos do protótipo: 0/600/1000/1600/1800/2800/3100ms), acumulando classes CSS (`draw-outline`, `flash-corners`, `draw-cross`, `pulse-dot`, `typing`, `show-tagline`, `done`) num wrapper `.sentinela-boot`. Clique ou tecla a qualquer momento pula direto pro estado final (`skip()`); `prefers-reduced-motion` pula automaticamente sem nem começar a animar. Recebe o formulário de login de verdade como `children` (não reimplementa os campos — o protótipo tinha e-mail/senha estáticos só de mockup).
-- CSS da animação em `globals.css`, seção "Boot animation da logo" — contorno do quadrado desenhando via `stroke-dashoffset`, 4 cantos em L acendendo em sequência (~80ms entre cada), mira central se desenhando (scale+opacity), ponto vermelho pulsando, nome "sentinela" com efeito de digitação (`width` animado em `ch`, não é o `transform`/`opacity` puro que a spec original pedia — como é só a largura de um `<span>` inline, sem afetar layout de mais nada ao redor, o reflow é local e imperceptível; não valia a complexidade de fazer via `clip-path` só por causa disso) + cursor piscando em loop contínuo, tagline com fade, formulário revelando com fade+slide enquanto a logo encolhe e migra pro topo.
-- **Desvio deliberado da paleta do protótipo**: o HTML original usava cores próprias (`#33ff66`, `#ff3b3b`, `#1f6b45`, `#04120a`) ligeiramente diferentes dos tokens já em uso no resto do app (`--color-phosphor: #39ff6a`, `--color-critical: #ff5c5c`, etc). Em vez de introduzir uma segunda paleta "de marca" quase-idêntica, a logo usa os tokens que já existem — evita ter dois verdes/vermelhos sutilmente diferentes brigando na mesma tela quando o usuário loga e cai num dashboard que já usa a paleta original.
-- **Bug corrigido durante a implementação**: a largura final do nome (`9ch`) cortava o último "a" de "sentinela" — a métrica de `ch` do JetBrains Mono não fecha exato para 9 caracteres. Ajustado para `calc(9ch + 4px)`.
-- A tela `/login` (`page.tsx`) não usa mais `TerminalWindow`/`TerminalPrompt` — só para esta tela, a logo animada substitui esses elementos como identidade visual de entrada; as demais telas continuam no padrão de janela de terminal.
-- **Ainda pendente**: as variantes estáticas do logo em SVG (`app/public/brand/logo-principal.svg`, `logo-icone.svg`, `logo-horizontal.svg`) para favicon, header/topbar e materiais institucionais — só a versão animada da tela de login foi feita. O motivo "mira/alvo com cantos em viewfinder" já existe como JSX inline dentro de `LoginBoot.tsx`; extrair para SVGs estáticos reaproveitando essa mesma geometria quando for a vez do header/favicon.
-
-## Estratégia de hospedagem
-
-Online agora (Supabase Cloud + Vercel/VPS + VPS isolada para o worker) → migração futura para intranet 100% local via Docker Compose. Nunca hardcoded: toda config sensível via variável de ambiente.
-
-## Ordem de construção (não pular fases)
-
-Ver `PROGRESSO.md` para o checklist detalhado e o status atual. Ordem: esqueleto visual → modelo de dados/auth/RLS → gate de modalidade legal → uma ferramenta passiva ponta a ponta → demais ferramentas passivas → relatório exportável → modo Ambiente de Teste (ativo) → migração para hospedagem local.
+- Servidores locais (`npm run dev` em `app/`, `uvicorn main:app` em `worker/`) não sobem sozinhos nem ficam supervisionados — rodar manualmente quando for testar/usar. Next.js 16 tem lockfile que impede duas instâncias simultâneas na mesma porta; se `npm run dev` disser "another server is already running", matar o processo pelo PID indicado antes de subir de novo.
+- Docker não está instalado nesta máquina — `docker-compose.yml`/Dockerfiles existem e deveriam funcionar, mas só testados rodando os processos direto (sem container).
+- Nmap 7.80 instalado via `winget install Insecure.Nmap` (não precisa de admin pra scan `-sT`).

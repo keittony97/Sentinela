@@ -12,8 +12,9 @@ from fastapi import FastAPI  # noqa: E402
 
 import db  # noqa: E402
 from checks import (  # noqa: E402
+    basic_injection_probe,
     exposed_files,
-    exposed_ports,
+    port_scan,
     security_headers,
     storage_exposure,
     subdomains,
@@ -21,13 +22,20 @@ from checks import (  # noqa: E402
 
 POLL_INTERVAL_SECONDS = float(os.environ.get("POLL_INTERVAL_SECONDS", "3"))
 
-# Toda ferramenta aqui é passiva (is_active_tool=false no scan) — nenhuma
-# delas explora nada, só lê o que já está publicamente acessível/indexado.
+# Ferramentas passivas: is_active_tool=false, disponíveis em qualquer
+# modalidade legal. Ferramentas ativas (ver ACTIVE_TOOL_IDS): só rodam em
+# scans com is_active_tool=true, o que o banco (enforce_scan_legal_mode)
+# só aceita em projeto "ambiente_teste" autorizado E disparado por Admin
+# — reforçado aqui de novo por defesa em profundidade, não só confiar na
+# UI/banco terem feito a checagem antes de chegar no worker.
+ACTIVE_TOOL_IDS = {"basic_injection_probe"}
+
 TOOL_RUNNERS = {
     "headers_tls": security_headers.run,
     "subdomains": subdomains.run,
     "exposed_files": exposed_files.run,
-    "exposed_ports": exposed_ports.run,
+    "port_scan": port_scan.run,
+    "basic_injection_probe": basic_injection_probe.run,
     "storage_exposure": storage_exposure.run,
 }
 
@@ -61,6 +69,7 @@ def process_next_scan() -> bool:
     org_id = scan["organization_id"]
     project_id = scan["project_id"]
     tools = scan.get("tools_used") or []
+    is_active_scan = bool(scan.get("is_active_tool"))
 
     def log(tool: str, level: str, message: str) -> None:
         print(f"[scan {scan_id}] [{level}] [{tool}] {message}")
@@ -81,6 +90,14 @@ def process_next_scan() -> bool:
             runner = TOOL_RUNNERS.get(tool)
             if runner is None:
                 log(tool, "warning", f"Ferramenta desconhecida ou ainda não implementada: {tool}")
+                continue
+
+            # Defesa em profundidade: o gate de verdade é o trigger no banco
+            # (enforce_scan_legal_mode), mas o worker confere de novo antes
+            # de rodar qualquer ferramenta ativa — nunca confiar cegamente
+            # em dado que chegou até aqui.
+            if tool in ACTIVE_TOOL_IDS and not is_active_scan:
+                log(tool, "error", f"Ferramenta ativa '{tool}' bloqueada: scan não está marcado como is_active_tool")
                 continue
 
             log(tool, "info", f"Ferramenta '{tool}' iniciada para {target_url}")

@@ -2,11 +2,19 @@
 
 import { useActionState } from "react";
 import { startScan, type ScanFormState } from "./actions";
-import { PASSIVE_TOOLS } from "@/lib/scanTools";
+import { ACTIVE_TOOLS, PASSIVE_TOOLS } from "@/lib/scanTools";
 
 const initialState: ScanFormState = { error: null };
 
-export function StartScanForm({ targetId, projectId }: { targetId: string; projectId: string }) {
+export function StartScanForm({
+  targetId,
+  projectId,
+  canRunActiveTools,
+}: {
+  targetId: string;
+  projectId: string;
+  canRunActiveTools: boolean;
+}) {
   const [state, formAction, pending] = useActionState(startScan, initialState);
 
   return (
@@ -29,6 +37,29 @@ export function StartScanForm({ targetId, projectId }: { targetId: string; proje
           </label>
         ))}
       </fieldset>
+
+      {canRunActiveTools ? (
+        <fieldset className="flex flex-col gap-2 border border-[var(--color-critical)] p-3">
+          <legend className="px-1 text-xs text-[var(--color-critical)]">
+            ferramentas ativas (modo &quot;Ambiente de Teste&quot;):
+          </legend>
+          {ACTIVE_TOOLS.map((tool) => (
+            <label key={tool.id} className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="tools" value={tool.id} className="mt-1" />
+              <span>
+                <span className="text-[var(--color-critical)]">{tool.label}</span>
+                <br />
+                <span className="text-xs text-[var(--color-fg-muted)]">{tool.description}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : (
+        <p className="text-xs text-[var(--color-fg-muted)]">
+          Ferramentas ativas indisponíveis aqui — exigem projeto em &quot;Ambiente de Teste&quot;
+          autorizado e usuário Admin.
+        </p>
+      )}
 
       {state.error && (
         <p className="text-[var(--color-critical)]" role="alert">

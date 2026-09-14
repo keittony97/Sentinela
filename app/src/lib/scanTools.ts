@@ -19,9 +19,9 @@ export const PASSIVE_TOOLS = [
     description: ".env, .git/config, backups... checando se estão publicamente acessíveis.",
   },
   {
-    id: "exposed_ports",
-    label: "Portas expostas (Shodan)",
-    description: "Consulta passiva ao Shodan. Requer SHODAN_API_KEY configurada no worker.",
+    id: "port_scan",
+    label: "Portas e serviços abertos (Nmap)",
+    description: "TCP connect scan direto no alvo já cadastrado — sem depender de dados de terceiros.",
   },
   {
     id: "storage_exposure",
@@ -33,3 +33,20 @@ export const PASSIVE_TOOLS = [
 export type PassiveToolId = (typeof PASSIVE_TOOLS)[number]["id"];
 
 export const PASSIVE_TOOL_IDS: readonly string[] = PASSIVE_TOOLS.map((tool) => tool.id);
+
+// Ferramentas ATIVAS — só disponíveis em projetos "ambiente_teste" com
+// autorização confirmada, e só para role admin (reforçado no banco via
+// enforce_scan_legal_mode, não só aqui). Cada uma corresponde a um módulo
+// em worker/checks/ registrado em ACTIVE_TOOL_IDS (worker/main.py).
+export const ACTIVE_TOOLS = [
+  {
+    id: "basic_injection_probe",
+    label: "Sonda de injeção (XSS refletido / SQLi básico)",
+    description:
+      "Envia um marcador inofensivo e uma aspas simples nos parâmetros de URL existentes. Ferramenta ativa — só Admin, só em Ambiente de Teste autorizado.",
+  },
+] as const;
+
+export type ActiveToolId = (typeof ACTIVE_TOOLS)[number]["id"];
+
+export const ACTIVE_TOOL_IDS: readonly string[] = ACTIVE_TOOLS.map((tool) => tool.id);

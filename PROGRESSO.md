@@ -4,7 +4,7 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 
 ## Status atual
 
-**Fase em andamento:** Fase 5 — Demais ferramentas do modo "Verificação Externa" (concluída)
+**Fase em andamento:** Fase 7 — Modo "Ambiente de Teste" (concluída). Fase 8 fica para o final, a pedido do usuário.
 
 ## Checklist de fases
 
@@ -13,9 +13,9 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - [x] Fase 3 — Cadastro de alvo + gate de modalidade legal
 - [x] Fase 4 — Primeira ferramenta passiva, ponta a ponta
 - [x] Fase 5 — Demais ferramentas do modo "Verificação Externa"
-- [ ] Fase 6 — Relatório exportável
-- [ ] Fase 7 — Modo "Ambiente de Teste" (ferramentas ativas)
-- [ ] Fase 8 — Migração para hospedagem local/intranet
+- [x] Fase 6 — Relatório exportável
+- [x] Fase 7 — Modo "Ambiente de Teste" (ferramentas ativas)
+- [ ] Fase 8 — Migração para hospedagem local/intranet (deixada para o final, a pedido do usuário)
 
 ## Decisões tomadas ao longo do caminho
 
@@ -35,8 +35,11 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - O worker só roda localmente por enquanto (`uvicorn main:app` manual) — não há deploy real (VPS dedicada mencionada no documento original) nem supervisão de processo (restart automático se cair). Entra quando o app for hospedado de verdade.
 - Animação de boot da tela de login implementada (Sessão 5). Faltam as variantes estáticas do logo em SVG (favicon, header/topbar) — ver `CLAUDE.md`.
 - A tela `/mfa` só permite *adicionar* um fator, não remover/trocar o existente — pra resetar, só via SQL direto em `auth.mfa_factors` (o que fiz para o Admin a pedido do usuário, na Sessão 6). Avaliar se vale adicionar essa opção na própria tela numa fase futura, senão isso sempre vai precisar de mim/SQL manual.
-- `exposed_ports` (Shodan) está implementado mas nunca rodou de verdade — `SHODAN_API_KEY` não configurada (o usuário não tem/forneceu uma conta Shodan). A ferramenta detecta a ausência e registra um achado informativo em vez de falhar, então não quebra nada, mas a cobertura de "portas expostas" fica incompleta até alguém configurar a chave em `worker/.env`.
 - `storage_exposure` tem taxa de falso positivo conhecida e documentada no próprio achado (severidade `medio`, não `alto`) — nomes de bucket S3/GCS são um namespace global, então bater o nome não prova que o bucket pertence à organização do alvo. Confirmado na prática durante o teste da Fase 5 contra `example.com`.
+- `port_scan` (Nmap) só roda scans simples (top 100 portas, sem detecção de versão de serviço aprofundada) — suficiente pro MVP, mas menos detalhado que um scan completo. Ajustar `--top-ports`/flags em `worker/checks/port_scan.py` se precisar de mais cobertura.
+- testssl.sh (mencionado no CLAUDE.md pra TLS mais profundo — cipher suites, protocolos vulneráveis) não foi implementado. `security_headers.py` só checa expiração do certificado via `ssl` do Python, mais simples que o que testssl.sh faria.
+- Nenhuma tela de gestão/remoção de usuários — o primeiro Admin e todas as contas de teste foram criadas/removidas via SQL direto.
+- Docker não está instalado na máquina de desenvolvimento — `docker-compose.yml`/Dockerfiles (worker) existem e deveriam funcionar, mas só testados rodando os processos direto. `worker/Dockerfile` agora também instala `nmap` via apt — não testado em container ainda.
 
 ## Bugs encontrados e corrigidos nesta sessão
 
@@ -125,3 +128,15 @@ Documento inicial (`CLAUDE.md`) definido antes de qualquer código.
 - Validado visualmente com Playwright: sequência completa, skip por clique, `prefers-reduced-motion` pulando direto pro estado final, e o login funcional (usuário/senha + mensagem de erro) continuando a funcionar normalmente dentro da nova tela.
 - Ainda faltam as variantes estáticas do logo (favicon, header/topbar) — só a versão animada da tela de login foi feita.
 - Build e lint passando sem erros.
+
+### Sessão 7 — 2026-09-14 — Fase 6: relatório PDF + Fase 7: modo "Ambiente de Teste"
+- **Fase 6**: relatório exportável em PDF via `@react-pdf/renderer` (não Puppeteer — mais leve pra deploy serverless). `app/src/lib/pdf/ProjectReportDocument.tsx` gera capa + sumário executivo (contagem por severidade) + detalhamento técnico + plano de remediação priorizado, agregando todos os scans de um projeto. Route handler em `.../relatorio/route.ts`, link "exportar relatório (PDF)" na tela do projeto.
+- **Fase 7**: gate de ferramentas ativas reforçado no banco — nova migração estende o trigger `enforce_scan_legal_mode` pra também exigir `role='admin'` (não só `pentester`) quando `is_active_tool=true`, e registra automaticamente no `audit_log` (`action='active_scan_triggered'`) toda vez que uma ferramenta ativa é disparada. Primeira ferramenta ativa: `basic_injection_probe` (XSS refletido + SQLi baseado em erro, sonda leve e não destrutiva nos parâmetros de query existentes). UI: seção de ferramentas ativas em `StartScanForm` só aparece se `role=admin` **e** `project.legal_mode=ambiente_teste` **e** `authorization_confirmed` — senão mostra um aviso explicando por quê.
+- **Troca de arquitetura no meio da sessão**: o usuário editou o `CLAUDE.md` diretamente enquanto eu trabalhava, propondo substituir a verificação de portas via Shodan (que eu tinha acabado de implementar na Fase 5, com passo a passo pra ele criar a conta) por um módulo próprio com Nmap + testssl.sh — sem custo de API, sem depender de dados de terceiros, sem escanear IPs não relacionados ao projeto. Perguntei e ele confirmou a troca. Removido `exposed_ports.py` (Shodan), criado `port_scan.py` (Nmap, TCP connect scan `-sT`, não precisa de privilégio elevado). Nmap 7.80 instalado nesta máquina via `winget install Insecure.Nmap`. testssl.sh **não** foi integrado nesta sessão (ficou como pendência — `security_headers.py` já cobre expiração de certificado de forma mais simples).
+- **Constatação importante**: o `CLAUDE.md` tinha sido revertido pra versão do documento de planejamento original (perdendo todas as notas operacionais acumuladas — detalhes do Supabase, contornos de rede, arquitetura do worker, etc.). Reincorporei esse conhecimento como uma seção nova ("Notas operacionais e de implementação") no fim do arquivo, sem tocar no que o usuário escreveu.
+- **Achado real durante os testes**: `exposed_files.py` concatenava os caminhos candidatos direto na URL do alvo sem remover query string/path existente — contra uma URL tipo `httpbin.org/get?a=1&b=2`, isso gerava URLs malformadas que endpoints "eco" (tipo `/get`) sempre respondem 200, causando falsos positivos em massa (achou "/backup.sql", "/.htpasswd" etc. que não existiam de verdade). Corrigido: a ferramenta agora sempre descarta path/query/fragment da URL do alvo antes de montar os caminhos candidatos.
+- **Descoberta no meio dos testes**: encontrei um alvo real (`inscricoesroraima.com.br`) e scans reais criados pelo próprio usuário (`keittony.ferreira`) enquanto eu trabalhava em paralelo — não é dado de teste meu, não mexi. Os scans dele completaram normalmente apesar dos meus vários restarts do worker durante a sessão.
+- Validação ponta a ponta com contas de teste descartáveis (admin + pentester, criadas e removidas via SQL): gate de ferramentas ativas testado nos três cenários (verificação externa = escondido mesmo pra admin; ambiente_teste + admin = visível; ambiente_teste + pentester não-admin = escondido); scan com todas as ferramentas (passivas + ativa) concluído com sucesso; PDF baixado e validado (12 páginas, conteúdo conferido via extração de texto — cabeçalho, sumário com contagem correta por severidade, achados detalhados, plano de remediação). Ferramenta Nmap testada isoladamente contra `scanme.nmap.org` (alvo de teste oficial do próprio Nmap) e via UI contra o mesmo alvo.
+- Build e lint passando sem erros.
+
+**Próximo passo:** Fase 8 — migração para hospedagem local/intranet — **deixada para o final**, a pedido explícito do usuário. Não há mais fases pendentes antes dela. Possíveis follow-ups não bloqueantes: testssl.sh, ZAP/Nuclei/sqlmap de verdade, tela de gestão de usuários, variantes estáticas do logo, supervisão de processo pro worker.
