@@ -244,6 +244,51 @@ export type Database = {
           },
         ]
       }
+      scan_logs: {
+        Row: {
+          created_at: string
+          id: string
+          level: string
+          message: string
+          organization_id: string
+          scan_id: string
+          tool: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          level?: string
+          message: string
+          organization_id: string
+          scan_id: string
+          tool: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          level?: string
+          message?: string
+          organization_id?: string
+          scan_id?: string
+          tool?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_logs_scan_id_fkey"
+            columns: ["scan_id"]
+            isOneToOne: false
+            referencedRelation: "scans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scans: {
         Row: {
           created_at: string

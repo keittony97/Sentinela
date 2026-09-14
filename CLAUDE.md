@@ -8,7 +8,9 @@ Plataforma interna multiusuário para a equipe testar alvos internos (intranet) 
 
 ## Estrutura do repositório
 
-- `app/` — aplicação Next.js (frontend + API routes). É o único código-fonte por enquanto.
+- `app/` — aplicação Next.js (frontend + API routes).
+- `worker/` — serviço Python (FastAPI) que processa a fila de scans. Ver seção própria abaixo.
+- `docker-compose.yml` — sobe o worker em container (Docker não está instalado na máquina de dev atual; testado rodando `uvicorn` direto).
 - `PROGRESSO.md` — status das fases, decisões, pendências. Atualizar ao final de cada sessão.
 - `prompt-sistema-pentest-bugbounty.md` — especificação funcional original, não editar; é a fonte da verdade do escopo.
 
@@ -50,7 +52,7 @@ Organização única (sem multi-tenant no MVP, mas manter RLS por boa prática).
 - **Gate de modalidade legal reforçado no banco**: `projects` tem um `CHECK` que exige `authorization_confirmed` + justificativa quando `legal_mode = 'ambiente_teste'`; `scans.is_active_tool = true` só passa pelo trigger `enforce_scan_legal_mode` se o projeto estiver autorizado em `ambiente_teste`. Não depende só do frontend.
 - **Audit log automático**: criar/atualizar a modalidade legal de um projeto grava sozinho uma entrada em `audit_log` via trigger — não depende do código da aplicação lembrar de logar. `audit_log` não tem policy de UPDATE/DELETE e os privilégios foram revogados (`revoke update, delete ... from authenticated, anon`) — é apêndice-only de verdade.
 - **MFA obrigatório**: `can_write()`/`is_admin()` exigem `auth.jwt()->>'aal' = 'aal2'` (segundo fator já verificado na sessão) além do role. Isso significa que Admin/Pentester **não conseguem** criar/editar `targets`/`projects`/`scans`/`findings` até fazer enrollment de MFA (TOTP) pela API do Supabase Auth — ainda não há tela para isso no app (entra numa fase futura). É comportamento esperado, não bug.
-- Chaves do projeto em `app/.env.local` (gitignored): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave `publishable`, segura para o cliente). A `service_role`/secret key **não foi obtida nem salva em nenhum lugar** — só será necessária quando o worker Python (Fase 7+) precisar de acesso privilegiado; buscar na hora, direto do dashboard do Supabase.
+- Chaves do projeto em `app/.env.local` (gitignored): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave `publishable`, segura para o cliente). A `service_role`/secret key foi obtida na Fase 4 (o worker Python precisa bypassar RLS pra processar scans de qualquer org) e vive só em `worker/.env` (gitignored) — nunca no app Next.js, nunca no browser, nunca commitada.
 - Primeira conta Admin criada diretamente via SQL (inserção em `auth.users`/`auth.identities`, contornando a necessidade da service role key): usuário `keittony.ferreira`. A senha foi definida pelo usuário e não fica registrada em nenhum arquivo do repositório.
 
 ## Peculiaridade de rede local (ambiente corporativo deste usuário)
@@ -60,6 +62,20 @@ A rede onde este projeto é desenvolvido intercepta TLS com um certificado próp
 2. Download do Chromium do Playwright — precisou de `NODE_TLS_REJECT_UNAUTHORIZED=0` só durante o `playwright install`.
 3. Chamadas HTTPS feitas pelo processo Node do Next.js (server actions chamando a API do Supabase) — resolvido de forma correta (sem desabilitar verificação TLS) com a flag `--use-system-ca` do Node 24, que faz o Node confiar na store de certificados do Windows (onde a CA corporativa já está instalada), igual o `curl` já fazia. Os scripts `dev`/`build`/`start` em `app/package.json` usam `cross-env NODE_OPTIONS=--use-system-ca` por causa disso — não remover.
 4. `supabase db push`/`supabase link` com conexão direta ao Postgres (porta do pooler) dão `ECONNRESET` nessa rede — a porta é bloqueada. Alternativa que funciona: aplicar migrações via API de gerenciamento do Supabase sobre HTTPS (`POST https://api.supabase.com/v1/projects/{ref}/database/query` com o access token, corpo `{"query": "<sql>"}`), que passa pela mesma porta 443 liberada. Depois de aplicar, inserir manualmente a versão em `supabase_migrations.schema_migrations` para manter o histórico do CLI consistente (senão o CLI tenta reaplicar do zero quando a porta do Postgres estiver acessível). `supabase gen types typescript --project-id <ref>` também funciona normalmente nessa rede (usa a mesma API HTTPS, não a porta do Postgres).
+
+## Worker de scans (a partir da Fase 4)
+
+- `worker/main.py`: app FastAPI (só `/health` por enquanto) que sobe um loop de polling em background (`asyncio`) — a cada `POLL_INTERVAL_SECONDS` (padrão 2s), busca em `scans` o mais antigo com `status='na_fila'` e reivindica atomicamente via `UPDATE ... WHERE status='na_fila'` (evita corrida se um dia rodar mais de uma instância). Sem Redis/Celery por decisão explícita do usuário — fila simples via polling na própria tabela `scans`, mais simples de operar no estágio atual.
+- `worker/db.py`: cliente fino sobre a API REST do PostgREST (`httpx`, sem SDK pesado), autenticado com a `service_role` key — o worker processa scans de qualquer org, então precisa bypassar RLS. Chave vive só em `worker/.env` (gitignored), nunca no app Next.js/browser.
+- `worker/checks/security_headers.py`: primeira e única ferramenta por enquanto — `"headers_tls"`, passiva (não intrusiva, disponível em qualquer modalidade legal). Faz um GET normal no alvo, confere headers de segurança (HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, exposição do header Server) e inspeciona o certificado TLS (dias até expirar). Gera findings com severidade, CWE, categoria OWASP, impacto e recomendação — já no formato que a UI espera.
+- Para adicionar uma nova ferramenta passiva (Fase 5): criar um módulo em `worker/checks/`, com uma função `run(url) -> (logs, findings)` no mesmo formato, e registrar em `TOOL_RUNNERS` em `main.py`. O `tools_used` do scan decide quais rodam.
+- **`truststore.inject_into_ssl()`** em `db.py` — mesmo problema de rede corporativa do app Next (`--use-system-ca`), só que do lado Python: `httpx`/`ssl` por padrão usam o bundle da `certifi`, que não confia na CA da rede local. `truststore` faz o `ssl` do Python usar a store de certificados do Windows, igual o `curl` já fazia nativamente. Sem essa linha, qualquer chamada do worker para a API do Supabase falha com `CERTIFICATE_VERIFY_FAILED`.
+
+### Tela de execução de scan em tempo real
+
+- `/alvos/[id]/projetos/[projectId]` dispara o scan (`startScan`, insere em `scans` com `status` default `na_fila`) e redireciona para `/alvos/[id]/projetos/[projectId]/scans/[scanId]`.
+- Essa tela (`ScanLiveView.tsx`, client component) escuta `scan_logs`/`scans`/`findings` via Supabase Realtime (Postgres Changes) **e também reconcilia via fetch direto** assim que a inscrição conecta, além de um poll de segurança a cada 2s enquanto o scan não terminar. Isso não é redundância por paranoia: na prática, o worker (poll a cada 2s) processa scans simples mais rápido do que o navegador consegue abrir o WebSocket da Realtime e se inscrever — eventos que acontecem antes da inscrição ficar ativa **não são entregues retroativamente**. Sem o fallback, a tela ficava presa em "na fila" indefinidamente mesmo com o scan já concluído no banco. Ao adicionar novas telas com Realtime, replicar esse padrão (inscrever + reconciliar + poll de segurança até o estado ser terminal), não confiar só no evento chegar a tempo.
+- **`REPLICA IDENTITY FULL`** em `scans`, `scan_logs` e `findings` (migração `20260914161500`) — com a identidade padrão (só chave primária), um `UPDATE` que só muda `status`/`started_at`/`finished_at` não carrega `organization_id` no WAL, e a Realtime precisa dessa coluna pra avaliar a policy de RLS (`organization_id = current_org_id()`); sem ela no payload, o evento é descartado silenciosamente. Se uma tabela nova entrar na publicação `supabase_realtime` e for atualizada por colunas que não incluem as usadas nas policies de RLS, aplicar `REPLICA IDENTITY FULL` nela também.
 
 ## Padrões de UI autenticada (a partir da Fase 3)
 
@@ -76,6 +92,31 @@ Já implementada no esqueleto (`app/src/app/globals.css`, `app/src/components/te
 - Componentes reutilizáveis: `TerminalWindow` (janela estilo terminal com barra de título), `TerminalPrompt` (`user@host:path$`), `TypingText` (efeito de digitação), `SeverityBadge` (Crítico/Alto/Médio/Baixo/Informativo).
 - Scanlines/CRT sutis via overlay global em `layout.tsx`, cuidado para não prejudicar contraste (WCAG AA).
 - Ao criar novas telas, reusar esses componentes em vez de criar cards genéricos brancos/sombra.
+
+## Identidade visual — logo (pendente de implementação)
+
+Especificação recebida do usuário (fora deste repositório), ainda não implementada — fazer quando alguém pegar a tela de login/branding de verdade:
+
+- Paleta do logo: verde fosforescente `#33ff66` sobre fundo quase-preto `#04120a`, com o ponto central em vermelho `#ff3b3b` (mesma lógica de quebra de padrão das severidades críticas).
+- Motivo central: "mira/alvo" (referência a escaneamento), com cantos em L estilo viewfinder de câmera/scanner.
+- Três variantes, todas em SVG versionadas em `app/public/brand/`:
+  - `logo-principal.svg` — quadrado com o nome "sentinela" abaixo + cursor de terminal piscando. Usar na tela de login e materiais institucionais.
+  - `logo-icone.svg` — só a mira, sem texto. Usar como favicon, avatar, ícone de app/PWA.
+  - `logo-horizontal.svg` — ícone compacto + nome ao lado. Usar no header/topbar e sidebar.
+
+## Animação de boot da tela de login (pendente de implementação)
+
+Também especificada pelo usuário, ainda não implementada. Ao carregar `/login`, o logo principal "monta" com uma animação de boot de terminal (~2.5–3s, pulável com qualquer tecla/clique):
+1. Contorno do quadrado do logo se desenha via `stroke-dashoffset` (efeito plotter).
+2. Os 4 cantos em L do viewfinder acendem em sequência (~80ms entre cada).
+3. Círculo e linhas da mira central se desenham do centro pra fora, ponto vermelho central pulsa (scale 0.5→1, opacity 0→1).
+4. Nome "sentinela" aparece com efeito de digitação, cursor verde piscando em loop contínuo depois.
+5. Tagline "pentest & bug bounty" com fade rápido.
+6. Formulário de login aparece com fade+slide de baixo pra cima; logo encolhe e migra pro topo como cabeçalho fixo.
+
+Requisitos técnicos: só `transform`/`opacity`/`stroke-dashoffset` (nunca `width`/`height`/`top`/`left`, evitar reflow); respeitar `prefers-reduced-motion` (pular direto pro estado final); roda uma vez por carregamento de página, não repete ao errar login (só o cursor pisca em loop contínuo); CSS keyframes puro, sem lib pesada só pra isso.
+
+Havia um arquivo `sentinela-login-animacao.html` (protótipo baixado de outra sessão/ferramenta do usuário) que chegou a entrar no repositório por acidente — o usuário apagou. Esta seção é o registro por escrito do que ele continha, pra implementar direito quando chegar a vez.
 
 ## Estratégia de hospedagem
 

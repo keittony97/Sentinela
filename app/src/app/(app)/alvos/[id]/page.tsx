@@ -62,15 +62,21 @@ export default async function TargetDetailPage({
             {projects.map((project) => (
               <li
                 key={project.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3 last:border-none last:pb-0"
+                className="border-b border-[var(--color-border)] pb-3 last:border-none last:pb-0"
               >
-                <span className="flex flex-col">
-                  <span>{project.name}</span>
-                  <span className="text-xs text-[var(--color-fg-muted)]">
-                    {project.auth_mode === "com_login" ? "com login" : "sem login"} · {project.status}
+                <Link
+                  href={`/alvos/${id}/projetos/${project.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 hover:text-[var(--color-phosphor)]"
+                >
+                  <span className="flex flex-col">
+                    <span>{project.name}</span>
+                    <span className="text-xs text-[var(--color-fg-muted)]">
+                      {project.auth_mode === "com_login" ? "com login" : "sem login"} ·{" "}
+                      {project.status}
+                    </span>
                   </span>
-                </span>
-                <LegalModeBadge mode={project.legal_mode} />
+                  <LegalModeBadge mode={project.legal_mode} />
+                </Link>
               </li>
             ))}
           </ul>

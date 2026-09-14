@@ -4,14 +4,14 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 
 ## Status atual
 
-**Fase em andamento:** Fase 3 — Cadastro de alvo + gate de modalidade legal (concluída)
+**Fase em andamento:** Fase 4 — Primeira ferramenta passiva, ponta a ponta (concluída)
 
 ## Checklist de fases
 
 - [x] Fase 1 — Esqueleto + identidade visual
 - [x] Fase 2 — Modelo de dados + auth + RLS
 - [x] Fase 3 — Cadastro de alvo + gate de modalidade legal
-- [ ] Fase 4 — Primeira ferramenta passiva, ponta a ponta
+- [x] Fase 4 — Primeira ferramenta passiva, ponta a ponta
 - [ ] Fase 5 — Demais ferramentas do modo "Verificação Externa"
 - [ ] Fase 6 — Relatório exportável
 - [ ] Fase 7 — Modo "Ambiente de Teste" (ferramentas ativas)
@@ -30,9 +30,15 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 
 ## Pendências / bloqueios conhecidos
 
-- `service_role` key do Supabase não foi obtida (bloqueada por segurança) — só vai ser necessária quando o worker Python de scans (Fase 7+) precisar de acesso privilegiado ao banco. Buscar na hora, direto do dashboard do Supabase, sem passar pelo CLI/logs.
-- Não existe ainda tela de detalhe/edição de projeto (só criação + listagem dentro do alvo) — deve entrar naturalmente na Fase 4, quando o primeiro scan for disparado a partir de um projeto.
 - Não existe tela de gestão de usuários (convidar, trocar role) — só existe a criação manual via SQL que fiz para o primeiro Admin. Provavelmente entra numa fase futura dedicada a RBAC/gestão de equipe, ainda não planejada explicitamente no checklist original.
+- Docker não está instalado na máquina de desenvolvimento atual — `docker-compose.yml`/`worker/Dockerfile` existem e deveriam funcionar, mas só foram testados rodando `uvicorn` direto (sem container). Validar quando houver Docker disponível (ou já na hospedagem online da Fase 8... quer dizer, da fase de deploy real).
+- O worker só roda localmente por enquanto (`uvicorn main:app` manual) — não há deploy real (VPS dedicada mencionada no documento original) nem supervisão de processo (restart automático se cair). Entra quando o app for hospedado de verdade.
+- Logo e animação de boot da tela de login ainda não implementados (spec registrada em `CLAUDE.md`, seção "Identidade visual — logo").
+- **Pendência de segurança para o usuário:** o fator de MFA do Admin (`keittony.ferreira`) foi recriado várias vezes durante testes automatizados nesta sessão (Fases 3 e 4) e a versão atual no banco foi gerada por um script de teste, não pelo autenticador real do usuário. Antes de usar o sistema de verdade, entre em `/mfa`... na verdade a tela `/mfa` só permite *adicionar* um fator, não remover o existente — para reconfigurar, seria preciso remover o fator antigo direto no dashboard do Supabase (Authentication → Users → MFA) e então fazer o enrollment de novo pela tela. Avaliar se vale adicionar uma opção de "remover/trocar fator" na tela de MFA numa fase futura.
+
+## Bugs encontrados e corrigidos nesta sessão
+
+- **Login não pedia o código MFA em sessões novas.** O fluxo original (Fase 3) só tratava o *enrollment* (primeira vez habilitando MFA); para uma conta que já tinha MFA verificado, um novo login ficava preso em aal1 e todo INSERT/UPDATE falhava silenciosamente contra a RLS, sem nenhuma tela pedindo o segundo fator. Corrigido: `LoginForm` agora é totalmente client-side (antes usava uma server action), checa `getAuthenticatorAssuranceLevel()` depois do `signInWithPassword`, e mostra uma segunda etapa pedindo o código de 6 dígitos quando `nextLevel` é `aal2` e `currentLevel` ainda é `aal1`. Isso só foi descoberto testando um segundo login em uma sessão de navegador nova — o teste da Fase 3 não pegou porque enroll+login aconteceram na mesma sessão.
 
 ## Log de sessões
 
@@ -77,3 +83,19 @@ Documento inicial (`CLAUDE.md`) definido antes de qualquer código.
 - Build e lint (`next build`, `eslint .`) passando sem erros.
 
 **Próximo passo:** Fase 4 — primeira ferramenta passiva ponta a ponta (ex: verificação de headers de segurança/TLS) a partir de um projeto existente: disparar → log de execução em tempo real → salvar finding → aparecer no relatório. Acho que antes disso vale decidir a arquitetura do worker de scans (mencionada no documento original como serviço Python separado) — ainda não há nada implementado para isso.
+
+### Sessão 4 — 2026-09-14 — Fase 4: primeira ferramenta passiva, ponta a ponta
+- Decisão de arquitetura (perguntada ao usuário antes de codar): worker Python real (FastAPI + polling na tabela `scans`, sem Redis por enquanto) em vez de rodar a checagem direto no Next.js — mais fiel ao plano original, valida a arquitetura que as Fases 5-7 vão reaproveitar.
+- Mesclado o `CLAUDE (1).md` (que o usuário tinha adicionado com spec de logo + animação de boot da tela de login, vindo de outra sessão/ferramenta) para dentro do `CLAUDE.md` principal; arquivo duplicado removido.
+- `worker/` criado: FastAPI + polling assíncrono, cliente REST fino sobre PostgREST (`httpx` + `service_role` key), primeira ferramenta `headers_tls` (headers de segurança + expiração de certificado TLS). `docker-compose.yml` e `Dockerfile` escritos (não testados — sem Docker na máquina atual).
+- Nova migração: tabela `scan_logs` (log de execução separado do relatório, conforme pedido no documento original) + `scans`/`findings`/`scan_logs` adicionadas à publicação `supabase_realtime`.
+- Tipos TypeScript regenerados.
+- UI nova: detalhe de projeto com botão de disparar scan, e tela de execução de scan ao vivo (`/alvos/[id]/projetos/[projectId]/scans/[scanId]`) com log em tempo real e lista de achados expansível (severidade, como foi encontrada, impacto, como corrigir, referências).
+- **Dois bugs reais encontrados e corrigidos durante a validação ponta a ponta** (não só do script de teste — ambos afetariam qualquer usuário real):
+  1. Login não pedia o segundo fator de MFA para contas que já tinham um fator verificado (só o enrollment inicial funcionava). Ver detalhes em "Bugs encontrados e corrigidos" acima.
+  2. Tela de scan ficava presa em "na fila" mesmo com o scan já concluído no banco — a Realtime não entregava o evento de UPDATE de `scans` porque faltava `organization_id` no WAL (replica identity padrão = só chave primária) para a RLS avaliar. Corrigido com `REPLICA IDENTITY FULL` + reconciliação/poll de segurança no client.
+- `truststore` adotado no worker para resolver o mesmo tipo de bloqueio de TLS da rede corporativa (client Python/httpx não confiava na CA local por padrão).
+- Validação ponta a ponta real com Playwright: login → habilitar MFA → cadastrar alvo (`example.com`) → criar projeto → disparar scan → acompanhar log ao vivo → scan concluído via Realtime → 6 achados reais listados e expansíveis com todos os campos exigidos pela spec. Dados de teste removidos do banco depois.
+- Build e lint (`next build`, `eslint .`) passando sem erros.
+
+**Próximo passo:** Fase 5 — reaproveitar o pipeline (worker + `TOOL_RUNNERS` + tela de scan) para as demais ferramentas passivas do modo "Verificação Externa" (exposição de configs/chaves em código público, subdomínios públicos, portas via serviços passivos tipo Shodan/Censys, permissões públicas em bancos/storage expostos). Cada uma vira só um novo módulo em `worker/checks/`.
