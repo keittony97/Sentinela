@@ -131,3 +131,168 @@ body {
   background: var(--color-bg-inset);
   border-bottom: 1px solid var(--color-border);
 }
+
+/* ==========================================================================
+   Animação de boot do logo — tela de login. Sequência: contorno se desenha
+   -> cantos do viewfinder acendem -> mira se desenha -> ponto central
+   pulsa -> nome digita -> tagline aparece -> logo encolhe pro topo e o
+   formulário revela. Classes controladas por LoginBoot.tsx.
+   ========================================================================== */
+
+.sentinela-boot {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sentinela-boot .logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1), margin 0.7s ease;
+  margin-bottom: 28px;
+}
+.sentinela-boot.done .logo-wrap {
+  transform: scale(0.5);
+  margin-top: -60px;
+  margin-bottom: -6px;
+}
+
+.sentinela-boot .logo-svg {
+  width: 160px;
+  height: 160px;
+}
+.sentinela-boot .logo-outline {
+  fill: var(--color-bg-elevated);
+  stroke: var(--color-border-bright);
+  stroke-width: 1.5;
+  stroke-dasharray: 900;
+  stroke-dashoffset: 900;
+}
+.sentinela-boot.draw-outline .logo-outline {
+  transition: stroke-dashoffset 0.6s ease-out;
+  stroke-dashoffset: 0;
+}
+
+.sentinela-boot .corner {
+  fill: none;
+  stroke: var(--color-phosphor);
+  stroke-width: 4;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.sentinela-boot.flash-corners .corner-1 { opacity: 1; transition-delay: 0s; }
+.sentinela-boot.flash-corners .corner-2 { opacity: 1; transition-delay: 0.08s; }
+.sentinela-boot.flash-corners .corner-3 { opacity: 1; transition-delay: 0.16s; }
+.sentinela-boot.flash-corners .corner-4 { opacity: 1; transition-delay: 0.24s; }
+
+.sentinela-boot .cross-group {
+  opacity: 0;
+  transform: scale(0.6);
+  transform-origin: 100px 100px;
+  transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+.sentinela-boot.draw-cross .cross-group { opacity: 1; transform: scale(1); }
+.sentinela-boot .cross-group circle,
+.sentinela-boot .cross-group line {
+  fill: none;
+  stroke: var(--color-phosphor);
+  stroke-width: 3;
+}
+.sentinela-boot .dot-crit {
+  fill: var(--color-critical);
+  opacity: 0;
+  transform: scale(0.4);
+  transform-origin: 100px 100px;
+  transition: opacity 0.35s ease-out, transform 0.35s ease-out;
+  transition-delay: 0.5s;
+}
+.sentinela-boot.pulse-dot .dot-crit { opacity: 1; transform: scale(1); }
+
+.sentinela-boot .wordmark {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-end;
+}
+.sentinela-boot .name-text {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  font-size: 1.9rem;
+  font-weight: 500;
+  color: var(--color-phosphor);
+  letter-spacing: 1px;
+}
+.sentinela-boot.typing .name-text {
+  animation: sentinela-typewriter 0.9s steps(9, end) forwards;
+}
+.sentinela-boot.typed .name-text { width: calc(9ch + 4px); }
+@keyframes sentinela-typewriter {
+  from { width: 0; }
+  to { width: calc(9ch + 4px); }
+}
+
+.sentinela-boot .wordmark .cursor {
+  display: inline-block;
+  width: 10px;
+  height: 26px;
+  background: var(--color-phosphor);
+  margin-left: 4px;
+  margin-bottom: 2px;
+  opacity: 0;
+}
+.sentinela-boot.typing .wordmark .cursor,
+.sentinela-boot.typed .wordmark .cursor {
+  opacity: 1;
+  animation: sentinela-boot-blink 1s step-end infinite;
+}
+@keyframes sentinela-boot-blink {
+  50% { opacity: 0; }
+}
+
+.sentinela-boot .tagline {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  letter-spacing: 3px;
+  color: var(--color-fg-dim);
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+.sentinela-boot.show-tagline .tagline { opacity: 1; }
+
+.sentinela-boot .login-reveal {
+  width: 100%;
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
+  transition: opacity 0.6s ease-out 0.1s, transform 0.6s ease-out 0.1s;
+}
+.sentinela-boot.done .login-reveal {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.sentinela-boot .skip-hint {
+  margin-top: 14px;
+  font-size: 0.68rem;
+  color: var(--color-fg-muted);
+  letter-spacing: 1px;
+  opacity: 0.8;
+  text-align: center;
+}
+.sentinela-boot.done .skip-hint {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sentinela-boot .logo-wrap,
+  .sentinela-boot .login-reveal {
+    transition: none;
+  }
+}

@@ -33,7 +33,7 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - Não existe tela de gestão de usuários (convidar, trocar role) — só existe a criação manual via SQL que fiz para o primeiro Admin. Provavelmente entra numa fase futura dedicada a RBAC/gestão de equipe, ainda não planejada explicitamente no checklist original.
 - Docker não está instalado na máquina de desenvolvimento atual — `docker-compose.yml`/`worker/Dockerfile` existem e deveriam funcionar, mas só foram testados rodando `uvicorn` direto (sem container). Validar quando houver Docker disponível (ou já na hospedagem online da Fase 8... quer dizer, da fase de deploy real).
 - O worker só roda localmente por enquanto (`uvicorn main:app` manual) — não há deploy real (VPS dedicada mencionada no documento original) nem supervisão de processo (restart automático se cair). Entra quando o app for hospedado de verdade.
-- Logo e animação de boot da tela de login ainda não implementados (spec registrada em `CLAUDE.md`, seção "Identidade visual — logo").
+- Animação de boot da tela de login implementada (Sessão 5). Faltam as variantes estáticas do logo em SVG (favicon, header/topbar) — ver `CLAUDE.md`.
 - **Pendência de segurança para o usuário:** o fator de MFA do Admin (`keittony.ferreira`) foi recriado várias vezes durante testes automatizados nesta sessão (Fases 3 e 4) e a versão atual no banco foi gerada por um script de teste, não pelo autenticador real do usuário. Antes de usar o sistema de verdade, entre em `/mfa`... na verdade a tela `/mfa` só permite *adicionar* um fator, não remover o existente — para reconfigurar, seria preciso remover o fator antigo direto no dashboard do Supabase (Authentication → Users → MFA) e então fazer o enrollment de novo pela tela. Avaliar se vale adicionar uma opção de "remover/trocar fator" na tela de MFA numa fase futura.
 
 ## Bugs encontrados e corrigidos nesta sessão
@@ -99,3 +99,12 @@ Documento inicial (`CLAUDE.md`) definido antes de qualquer código.
 - Build e lint (`next build`, `eslint .`) passando sem erros.
 
 **Próximo passo:** Fase 5 — reaproveitar o pipeline (worker + `TOOL_RUNNERS` + tela de scan) para as demais ferramentas passivas do modo "Verificação Externa" (exposição de configs/chaves em código público, subdomínios públicos, portas via serviços passivos tipo Shodan/Censys, permissões públicas em bancos/storage expostos). Cada uma vira só um novo módulo em `worker/checks/`.
+
+### Sessão 5 — 2026-09-14 — Animação de boot da tela de login
+- Trabalho fora da sequência linear de fases, a pedido do usuário: ele forneceu (de novo — tinha apagado por engano na Sessão 3) o protótipo `sentinela-login-animacao.html` com a animação de boot da logo, pra usar como base real da tela de login.
+- Portado para React: `app/src/app/login/LoginBoot.tsx` (controla a sequência via classes CSS acumuladas + timers, pulável com clique/tecla, respeita `prefers-reduced-motion`) envolvendo o `LoginForm` de verdade (usuário/senha + desafio MFA da Sessão 4) em vez dos campos estáticos do protótipo. CSS em `globals.css`, seção "Boot animation da logo".
+- Decisão deliberada: a logo usa os tokens de cor já existentes no app (`--color-phosphor`, `--color-critical`) em vez da paleta ligeiramente diferente do protótipo (`#33ff66`/`#ff3b3b`) — evita duas paletas quase-idênticas coexistindo. Documentado em `CLAUDE.md`.
+- Bug encontrado e corrigido durante a validação visual: a largura fixa de `9ch` pro nome "sentinela" cortava o último "a" (métrica do JetBrains Mono não fecha exato) — ajustado pra `calc(9ch + 4px)`.
+- Validado visualmente com Playwright: sequência completa, skip por clique, `prefers-reduced-motion` pulando direto pro estado final, e o login funcional (usuário/senha + mensagem de erro) continuando a funcionar normalmente dentro da nova tela.
+- Ainda faltam as variantes estáticas do logo (favicon, header/topbar) — só a versão animada da tela de login foi feita.
+- Build e lint passando sem erros.

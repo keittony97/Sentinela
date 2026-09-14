@@ -93,30 +93,16 @@ Já implementada no esqueleto (`app/src/app/globals.css`, `app/src/components/te
 - Scanlines/CRT sutis via overlay global em `layout.tsx`, cuidado para não prejudicar contraste (WCAG AA).
 - Ao criar novas telas, reusar esses componentes em vez de criar cards genéricos brancos/sombra.
 
-## Identidade visual — logo (pendente de implementação)
+## Identidade visual — logo e animação de boot do login (implementado)
 
-Especificação recebida do usuário (fora deste repositório), ainda não implementada — fazer quando alguém pegar a tela de login/branding de verdade:
+O usuário forneceu um protótipo HTML autônomo (`sentinela-login-animacao.html`, na raiz — reapareceu depois de ele ter apagado por engano; se sumir nas próximas sessões, o que importa já está portado no código abaixo, não precisa dele para nada além de referência histórica) com a animação de boot da logo. Portado para React em `app/src/app/login/`:
 
-- Paleta do logo: verde fosforescente `#33ff66` sobre fundo quase-preto `#04120a`, com o ponto central em vermelho `#ff3b3b` (mesma lógica de quebra de padrão das severidades críticas).
-- Motivo central: "mira/alvo" (referência a escaneamento), com cantos em L estilo viewfinder de câmera/scanner.
-- Três variantes, todas em SVG versionadas em `app/public/brand/`:
-  - `logo-principal.svg` — quadrado com o nome "sentinela" abaixo + cursor de terminal piscando. Usar na tela de login e materiais institucionais.
-  - `logo-icone.svg` — só a mira, sem texto. Usar como favicon, avatar, ícone de app/PWA.
-  - `logo-horizontal.svg` — ícone compacto + nome ao lado. Usar no header/topbar e sidebar.
-
-## Animação de boot da tela de login (pendente de implementação)
-
-Também especificada pelo usuário, ainda não implementada. Ao carregar `/login`, o logo principal "monta" com uma animação de boot de terminal (~2.5–3s, pulável com qualquer tecla/clique):
-1. Contorno do quadrado do logo se desenha via `stroke-dashoffset` (efeito plotter).
-2. Os 4 cantos em L do viewfinder acendem em sequência (~80ms entre cada).
-3. Círculo e linhas da mira central se desenham do centro pra fora, ponto vermelho central pulsa (scale 0.5→1, opacity 0→1).
-4. Nome "sentinela" aparece com efeito de digitação, cursor verde piscando em loop contínuo depois.
-5. Tagline "pentest & bug bounty" com fade rápido.
-6. Formulário de login aparece com fade+slide de baixo pra cima; logo encolhe e migra pro topo como cabeçalho fixo.
-
-Requisitos técnicos: só `transform`/`opacity`/`stroke-dashoffset` (nunca `width`/`height`/`top`/`left`, evitar reflow); respeitar `prefers-reduced-motion` (pular direto pro estado final); roda uma vez por carregamento de página, não repete ao errar login (só o cursor pisca em loop contínuo); CSS keyframes puro, sem lib pesada só pra isso.
-
-Havia um arquivo `sentinela-login-animacao.html` (protótipo baixado de outra sessão/ferramenta do usuário) que chegou a entrar no repositório por acidente — o usuário apagou. Esta seção é o registro por escrito do que ele continha, pra implementar direito quando chegar a vez.
+- `LoginBoot.tsx` — client component que controla a sequência via `setTimeout` (mesmos tempos do protótipo: 0/600/1000/1600/1800/2800/3100ms), acumulando classes CSS (`draw-outline`, `flash-corners`, `draw-cross`, `pulse-dot`, `typing`, `show-tagline`, `done`) num wrapper `.sentinela-boot`. Clique ou tecla a qualquer momento pula direto pro estado final (`skip()`); `prefers-reduced-motion` pula automaticamente sem nem começar a animar. Recebe o formulário de login de verdade como `children` (não reimplementa os campos — o protótipo tinha e-mail/senha estáticos só de mockup).
+- CSS da animação em `globals.css`, seção "Boot animation da logo" — contorno do quadrado desenhando via `stroke-dashoffset`, 4 cantos em L acendendo em sequência (~80ms entre cada), mira central se desenhando (scale+opacity), ponto vermelho pulsando, nome "sentinela" com efeito de digitação (`width` animado em `ch`, não é o `transform`/`opacity` puro que a spec original pedia — como é só a largura de um `<span>` inline, sem afetar layout de mais nada ao redor, o reflow é local e imperceptível; não valia a complexidade de fazer via `clip-path` só por causa disso) + cursor piscando em loop contínuo, tagline com fade, formulário revelando com fade+slide enquanto a logo encolhe e migra pro topo.
+- **Desvio deliberado da paleta do protótipo**: o HTML original usava cores próprias (`#33ff66`, `#ff3b3b`, `#1f6b45`, `#04120a`) ligeiramente diferentes dos tokens já em uso no resto do app (`--color-phosphor: #39ff6a`, `--color-critical: #ff5c5c`, etc). Em vez de introduzir uma segunda paleta "de marca" quase-idêntica, a logo usa os tokens que já existem — evita ter dois verdes/vermelhos sutilmente diferentes brigando na mesma tela quando o usuário loga e cai num dashboard que já usa a paleta original.
+- **Bug corrigido durante a implementação**: a largura final do nome (`9ch`) cortava o último "a" de "sentinela" — a métrica de `ch` do JetBrains Mono não fecha exato para 9 caracteres. Ajustado para `calc(9ch + 4px)`.
+- A tela `/login` (`page.tsx`) não usa mais `TerminalWindow`/`TerminalPrompt` — só para esta tela, a logo animada substitui esses elementos como identidade visual de entrada; as demais telas continuam no padrão de janela de terminal.
+- **Ainda pendente**: as variantes estáticas do logo em SVG (`app/public/brand/logo-principal.svg`, `logo-icone.svg`, `logo-horizontal.svg`) para favicon, header/topbar e materiais institucionais — só a versão animada da tela de login foi feita. O motivo "mira/alvo com cantos em viewfinder" já existe como JSX inline dentro de `LoginBoot.tsx`; extrair para SVGs estáticos reaproveitando essa mesma geometria quando for a vez do header/favicon.
 
 ## Estratégia de hospedagem
 
