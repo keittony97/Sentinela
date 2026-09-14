@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .venv/
+# testssl.sh clonado localmente pra dev (ver checks/tls_scan.py). No
+# Docker, o Dockerfile clona de novo na build da imagem.
+vendor/

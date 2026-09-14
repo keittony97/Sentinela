@@ -18,6 +18,7 @@ from checks import (  # noqa: E402
     security_headers,
     storage_exposure,
     subdomains,
+    tls_scan,
 )
 
 POLL_INTERVAL_SECONDS = float(os.environ.get("POLL_INTERVAL_SECONDS", "3"))
@@ -28,10 +29,11 @@ POLL_INTERVAL_SECONDS = float(os.environ.get("POLL_INTERVAL_SECONDS", "3"))
 # só aceita em projeto "ambiente_teste" autorizado E disparado por Admin
 # — reforçado aqui de novo por defesa em profundidade, não só confiar na
 # UI/banco terem feito a checagem antes de chegar no worker.
-ACTIVE_TOOL_IDS = {"basic_injection_probe"}
+ACTIVE_TOOL_IDS = {"basic_injection_probe", "port_scan"}
 
 TOOL_RUNNERS = {
     "headers_tls": security_headers.run,
+    "tls_scan": tls_scan.run,
     "subdomains": subdomains.run,
     "exposed_files": exposed_files.run,
     "port_scan": port_scan.run,

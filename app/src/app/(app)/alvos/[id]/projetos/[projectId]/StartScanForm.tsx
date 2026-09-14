@@ -28,7 +28,13 @@ export function StartScanForm({
         </legend>
         {PASSIVE_TOOLS.map((tool) => (
           <label key={tool.id} className="flex items-start gap-2 text-sm">
-            <input type="checkbox" name="tools" value={tool.id} defaultChecked className="mt-1" />
+            <input
+              type="checkbox"
+              name="tools"
+              value={tool.id}
+              defaultChecked={!("slow" in tool && tool.slow)}
+              className="mt-1"
+            />
             <span>
               <span className="text-[var(--color-fg)]">{tool.label}</span>
               <br />

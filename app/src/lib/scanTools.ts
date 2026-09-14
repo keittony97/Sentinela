@@ -9,6 +9,13 @@ export const PASSIVE_TOOLS = [
     description: "HSTS, CSP, X-Frame-Options... e validade do certificado.",
   },
   {
+    id: "tls_scan",
+    label: "Análise profunda de TLS (testssl.sh)",
+    description:
+      "Protocolos, cifras e vulnerabilidades conhecidas — só o handshake padrão, igual um navegador faria. Pode levar vários minutos (abre muitas conexões TLS separadas); desmarcada por padrão por causa disso.",
+    slow: true,
+  },
+  {
     id: "subdomains",
     label: "Subdomínios públicos",
     description: "Certificate Transparency (crt.sh) — não toca o alvo diretamente.",
@@ -17,11 +24,6 @@ export const PASSIVE_TOOLS = [
     id: "exposed_files",
     label: "Arquivos sensíveis expostos",
     description: ".env, .git/config, backups... checando se estão publicamente acessíveis.",
-  },
-  {
-    id: "port_scan",
-    label: "Portas e serviços abertos (Nmap)",
-    description: "TCP connect scan direto no alvo já cadastrado — sem depender de dados de terceiros.",
   },
   {
     id: "storage_exposure",
@@ -44,6 +46,12 @@ export const ACTIVE_TOOLS = [
     label: "Sonda de injeção (XSS refletido / SQLi básico)",
     description:
       "Envia um marcador inofensivo e uma aspas simples nos parâmetros de URL existentes. Ferramenta ativa — só Admin, só em Ambiente de Teste autorizado.",
+  },
+  {
+    id: "port_scan",
+    label: "Portas e serviços abertos (Nmap)",
+    description:
+      "TCP connect scan direto no alvo já cadastrado. Ferramenta ativa — port scanning contra um alvo sem contato prévio é zona cinzenta juridicamente, mesmo sendo leve; só Admin, só em Ambiente de Teste autorizado.",
   },
 ] as const;
 
