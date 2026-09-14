@@ -210,6 +210,43 @@ function SeverityChip({ severity }: { severity: Severity }) {
   );
 }
 
+type FindingRow = Tables<"findings">;
+
+type FindingGroup = {
+  representative: FindingRow;
+  occurrences: number;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+// O mesmo problema (ex: "CSP ausente") é reportado de novo a cada scan em
+// que o alvo continua vulnerável. Sem agrupar por título+CWE, um projeto
+// re-scaneado várias vezes infla o relatório com o mesmo achado repetido —
+// agrupamos e mostramos "detectado em N verificações" em vez de duplicar o
+// bloco inteiro. Achados com título dinâmico (ex: "Certificado expira em N
+// dias") não se agrupam entre si de propósito: cada contagem de dias é um
+// fato diferente, não uma repetição do mesmo achado.
+function groupFindings(findings: FindingRow[]): FindingGroup[] {
+  const groups = new Map<string, FindingRow[]>();
+  for (const finding of findings) {
+    const key = `${finding.title}|||${finding.cwe ?? ""}`;
+    const list = groups.get(key);
+    if (list) list.push(finding);
+    else groups.set(key, [finding]);
+  }
+  return Array.from(groups.values()).map((occurrences) => {
+    const sorted = [...occurrences].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    return {
+      representative: sorted[sorted.length - 1],
+      occurrences: sorted.length,
+      firstSeen: sorted[0].created_at,
+      lastSeen: sorted[sorted.length - 1].created_at,
+    };
+  });
+}
+
 // Texto padrão, só usado se a organização ainda não tiver configurado o
 // próprio template em report_compliance_templates (ex: org criada depois
 // dessa migração, sem seed). O texto de verdade fica no banco.
@@ -256,12 +293,15 @@ export function ProjectReportDocument({
   complianceTemplate,
   involvesPersonalData,
 }: ProjectReportProps) {
-  const sortedFindings = [...findings].sort(
-    (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
+  const findingGroups = groupFindings(findings);
+  const sortedGroups = [...findingGroups].sort(
+    (a, b) =>
+      SEVERITY_ORDER.indexOf(a.representative.severity) -
+      SEVERITY_ORDER.indexOf(b.representative.severity),
   );
   const counts = SEVERITY_ORDER.reduce<Record<Severity, number>>(
     (acc, sev) => {
-      acc[sev] = findings.filter((f) => f.severity === sev).length;
+      acc[sev] = findingGroups.filter((g) => g.representative.severity === sev).length;
       return acc;
     },
     { critico: 0, alto: 0, medio: 0, baixo: 0, informativo: 0 },
@@ -382,7 +422,7 @@ export function ProjectReportDocument({
           ))}
           <View style={[styles.summaryRow, { borderBottomWidth: 0 }]}>
             <Text style={styles.summaryCellLabel}>Total</Text>
-            <Text style={styles.summaryCellValue}>{findings.length}</Text>
+            <Text style={styles.summaryCellValue}>{findingGroups.length}</Text>
           </View>
         </View>
 
@@ -400,10 +440,10 @@ export function ProjectReportDocument({
       {/* Detalhamento técnico */}
       <Page size="A4" style={styles.page} wrap>
         <Text style={styles.h1}>Detalhamento técnico</Text>
-        {sortedFindings.length === 0 && (
+        {sortedGroups.length === 0 && (
           <Text style={styles.paragraph}>Nenhum achado registrado nas verificações incluídas.</Text>
         )}
-        {sortedFindings.map((finding, idx) => (
+        {sortedGroups.map(({ representative: finding, occurrences, firstSeen, lastSeen }, idx) => (
           <View key={finding.id} style={styles.findingBlock} wrap={false}>
             <View style={styles.findingHeaderRow}>
               <Text style={styles.findingTitle}>
@@ -414,6 +454,13 @@ export function ProjectReportDocument({
             <Text style={styles.findingMeta}>
               {[finding.cwe, finding.owasp_category].filter(Boolean).join(" · ") || "sem CWE/OWASP associado"}
             </Text>
+            {occurrences > 1 && (
+              <Text style={styles.findingMeta}>
+                Detectado em {occurrences} verificações — primeira em{" "}
+                {new Date(firstSeen).toLocaleDateString("pt-BR")}, mais recente em{" "}
+                {new Date(lastSeen).toLocaleDateString("pt-BR")}.
+              </Text>
+            )}
 
             {finding.description && (
               <>
@@ -460,7 +507,7 @@ export function ProjectReportDocument({
           Ordem sugerida de correção — do maior risco para o menor. Achados informativos ficam
           por último e podem não exigir ação imediata.
         </Text>
-        {sortedFindings.map((finding, idx) => (
+        {sortedGroups.map(({ representative: finding }, idx) => (
           <View key={finding.id} style={styles.remediationRow} wrap={false}>
             <Text style={styles.remediationIndex}>{idx + 1}.</Text>
             <View style={styles.remediationSeverity}>
