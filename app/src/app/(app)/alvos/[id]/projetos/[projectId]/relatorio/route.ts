@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectReportDocument } from "@/lib/pdf/ProjectReportDocument";
+import { findingsInvolvePersonalData } from "@/lib/pdf/personalDataDetection";
 
 export async function GET(
   _request: Request,
@@ -27,17 +28,37 @@ export async function GET(
     return NextResponse.json({ error: "Projeto ou alvo não encontrado." }, { status: 404 });
   }
 
-  const { data: organization } = await supabase
-    .from("organizations")
-    .select("name")
-    .eq("id", profile.organization_id)
-    .single();
+  const [{ data: organization }, { data: complianceTemplate }] = await Promise.all([
+    supabase.from("organizations").select("name").eq("id", profile.organization_id).single(),
+    supabase
+      .from("report_compliance_templates")
+      .select("methodology_statement, lgpd_note")
+      .eq("organization_id", profile.organization_id)
+      .maybeSingle(),
+  ]);
 
   const { data: scans } = await supabase
     .from("scans")
-    .select("id, tools_used, status, created_at, finished_at")
+    .select("id, tools_used, status, created_at, started_at, finished_at, triggered_by")
     .eq("project_id", projectId)
     .order("created_at", { ascending: true });
+
+  // Responsável técnico por scan (Fase 6+: cabeçalho de conformidade) —
+  // busca separada em vez de embedding do PostgREST, mais explícito.
+  const triggeredByIds = Array.from(
+    new Set((scans ?? []).map((s) => s.triggered_by).filter((v): v is string => Boolean(v))),
+  );
+  const { data: triggeredByUsers } =
+    triggeredByIds.length > 0
+      ? await supabase.from("users").select("id, username, role").in("id", triggeredByIds)
+      : { data: [] };
+  const userById = new Map((triggeredByUsers ?? []).map((u) => [u.id, u]));
+
+  const scansWithResponsible = (scans ?? []).map((scan) => ({
+    ...scan,
+    triggered_by_username: userById.get(scan.triggered_by)?.username ?? null,
+    triggered_by_role: userById.get(scan.triggered_by)?.role ?? null,
+  }));
 
   const scanIds = (scans ?? []).map((s) => s.id);
 
@@ -58,9 +79,11 @@ export async function GET(
         authorization_justification: project.authorization_justification,
         created_at: project.created_at,
       },
-      scans: scans ?? [],
+      scans: scansWithResponsible,
       findings: findings ?? [],
       generatedAt: new Date().toLocaleString("pt-BR"),
+      complianceTemplate: complianceTemplate ?? null,
+      involvesPersonalData: findingsInvolvePersonalData(findings ?? []),
     }),
   );
 

@@ -40,7 +40,8 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 - testssl.sh (mencionado no CLAUDE.md pra TLS mais profundo — cipher suites, protocolos vulneráveis) não foi implementado. `security_headers.py` só checa expiração do certificado via `ssl` do Python, mais simples que o que testssl.sh faria.
 - Nenhuma tela de gestão/remoção de usuários — o primeiro Admin e todas as contas de teste foram criadas/removidas via SQL direto.
 - Docker não está instalado na máquina de desenvolvimento — `docker-compose.yml`/Dockerfiles (worker) existem e deveriam funcionar, mas só testados rodando os processos direto. `worker/Dockerfile` agora também instala `nmap` via apt — não testado em container ainda.
-- **Cabeçalho de conformidade e rastreabilidade no relatório PDF (novo requisito, ainda não implementado)** — o usuário adicionou essa seção ao `CLAUDE.md` (responsável técnico, ferramentas utilizadas, declaração de metodologia/limites, nota de conformidade LGPD condicional, tudo como template configurável no banco). O relatório da Fase 6 (`ProjectReportDocument.tsx`) ainda não tem nada disso — falta: tabela nova pra guardar o template configurável, lógica pra detectar finding com dado pessoal (CPF/nome/telefone/e-mail/dado sensível) e decidir quando mostrar a nota de LGPD, e a seção em si no PDF. Perguntei ao usuário se quer que eu implemente já.
+- A detecção de dado pessoal pro cabeçalho de conformidade (`personalDataDetection.ts`) é uma heurística de regex/palavra-chave, não uma análise jurídica — pode dar falso negativo (ex: nome de pessoa sozinho, sem CPF/e-mail junto). Documentado no próprio código e no texto do template como limitação conhecida.
+- O texto de metodologia/LGPD no relatório é o padrão que eu escrevi a partir da especificação do usuário — **ainda não foi revisado pelo jurídico da organização**, exatamente como o requisito original pedia que fosse possível fazer antes de produção. Fica em `report_compliance_templates`, editável via SQL/futura tela de admin (não existe UI de edição ainda).
 
 ## Bugs encontrados e corrigidos nesta sessão
 
@@ -141,3 +142,14 @@ Documento inicial (`CLAUDE.md`) definido antes de qualquer código.
 - Build e lint passando sem erros.
 
 **Próximo passo:** Fase 8 — migração para hospedagem local/intranet — **deixada para o final**, a pedido explícito do usuário. Não há mais fases pendentes antes dela. Possíveis follow-ups não bloqueantes: testssl.sh, ZAP/Nuclei/sqlmap de verdade, tela de gestão de usuários, variantes estáticas do logo, supervisão de processo pro worker.
+
+### Sessão 8 — 2026-09-14 — Cabeçalho de conformidade e rastreabilidade (LGPD)
+- Usuário pediu pra registrar no `CLAUDE.md` um requisito novo: todo relatório exportado precisa abrir com um cabeçalho de conformidade (responsável técnico, ferramentas utilizadas, declaração de metodologia/limites, nota de conformidade LGPD condicional), com o texto como template configurável no banco, não hardcoded. Adicionado ao `CLAUDE.md` exatamente como fornecido, e implementado na sequência (usuário confirmou que queria já).
+- Nova tabela `report_compliance_templates` (1 linha por organização, RLS admin-only pra editar) guardando `methodology_statement` (com placeholder `{{modalidade}}`) e `lgpd_note`. Seed com o texto padrão pra organização existente.
+- `ProjectReportDocument.tsx` ganhou uma segunda página (logo após a capa) com as 4 seções do cabeçalho. "Responsável técnico" vem de `scans.triggered_by` + join com `public.users`; "ferramentas utilizadas" é a união de `tools_used` de todos os scans do relatório.
+- Nova heurística `personalDataDetection.ts` (regex de CPF/e-mail/telefone BR + palavras-chave) decide se a nota de LGPD aparece, varrendo título/descrição/impacto/evidência de cada finding. Documentada como best-effort, não análise jurídica de verdade.
+- Se a organização não tiver o template configurado (`maybeSingle()` retorna null), cai num texto padrão embutido no componente — geração do relatório nunca quebra por falta de configuração.
+- Testado nos dois sentidos com uma conta descartável: scan sem findings com dado pessoal → PDF sem a seção de LGPD; inserido um finding de teste com CPF/e-mail na evidência → PDF com a seção de LGPD aparecendo corretamente, com o texto vindo do banco.
+- Build e lint passando sem erros.
+
+**Próximo passo:** ainda Fase 8 quando o usuário pedir. Sem mais requisitos pendentes registrados até aqui.

@@ -210,6 +210,15 @@ function SeverityChip({ severity }: { severity: Severity }) {
   );
 }
 
+// Texto padrão, só usado se a organização ainda não tiver configurado o
+// próprio template em report_compliance_templates (ex: org criada depois
+// dessa migração, sem seed). O texto de verdade fica no banco.
+const DEFAULT_METHODOLOGY_STATEMENT =
+  "Este relatório documenta os resultados de uma verificação de segurança conduzida estritamente sob a modalidade legal declarada para o projeto ({{modalidade}}). Nenhum procedimento intrusivo ou exploratório foi realizado além do estritamente necessário para confirmar a existência de cada vulnerabilidade relatada — não houve extração, cópia ou manipulação de dados além do mínimo indispensável para evidenciar a falha encontrada.";
+
+const DEFAULT_LGPD_NOTE =
+  "Nota de conformidade com a LGPD (Lei nº 13.709/2018): esta verificação pode ter exposto, incidentalmente, dados pessoais durante a confirmação de vulnerabilidades (art. 6º — princípios da necessidade e da minimização, e art. 46 — medidas de segurança exigidas do controlador/operador). Qualquer dado pessoal eventualmente visualizado durante o teste foi tratado exclusivamente para fins de confirmação e documentação da falha identificada, sem armazenamento além do estritamente necessário para a elaboração deste relatório. Como recomendação técnica — não como afirmação jurídica categórica — sugere-se que a organização responsável pelo alvo avalie, junto ao seu Encarregado de Dados (DPO) e à área jurídica, a eventual necessidade de comunicação à Autoridade Nacional de Proteção de Dados (ANPD) e aos titulares dos dados, conforme art. 48 da LGPD.";
+
 export type ProjectReportProps = {
   organizationName: string;
   target: { name: string; url: string; scope: string };
@@ -226,10 +235,15 @@ export type ProjectReportProps = {
     tools_used: string[];
     status: string;
     created_at: string;
+    started_at: string | null;
     finished_at: string | null;
+    triggered_by_username: string | null;
+    triggered_by_role: string | null;
   }>;
   findings: Array<Tables<"findings">>;
   generatedAt: string;
+  complianceTemplate: { methodology_statement: string; lgpd_note: string } | null;
+  involvesPersonalData: boolean;
 };
 
 export function ProjectReportDocument({
@@ -239,6 +253,8 @@ export function ProjectReportDocument({
   scans,
   findings,
   generatedAt,
+  complianceTemplate,
+  involvesPersonalData,
 }: ProjectReportProps) {
   const sortedFindings = [...findings].sort(
     (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
@@ -250,6 +266,13 @@ export function ProjectReportDocument({
     },
     { critico: 0, alto: 0, medio: 0, baixo: 0, informativo: 0 },
   );
+
+  const methodologyText = (complianceTemplate?.methodology_statement ?? DEFAULT_METHODOLOGY_STATEMENT).replace(
+    "{{modalidade}}",
+    LEGAL_MODE_LABEL[project.legal_mode] ?? project.legal_mode,
+  );
+  const lgpdText = complianceTemplate?.lgpd_note ?? DEFAULT_LGPD_NOTE;
+  const toolsUsed = Array.from(new Set(scans.flatMap((s) => s.tools_used)));
 
   return (
     <Document
@@ -297,6 +320,41 @@ export function ProjectReportDocument({
           <Text style={styles.coverMetaLabel}>Gerado em</Text>
           <Text style={styles.coverMetaValue}>{generatedAt}</Text>
         </View>
+      </Page>
+
+      {/* Cabeçalho de conformidade e rastreabilidade — obrigatório em todo
+          relatório (ver CLAUDE.md). Gerado a partir dos dados do(s) scan(s)
+          incluído(s); texto de metodologia/LGPD vem de
+          report_compliance_templates (configurável por organização). */}
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.h1}>Conformidade e rastreabilidade</Text>
+
+        <Text style={styles.h2}>Responsável técnico</Text>
+        {scans.map((scan, idx) => (
+          <Text key={scan.id} style={styles.paragraph}>
+            {idx + 1}. {scan.triggered_by_username ?? "usuário removido"}
+            {scan.triggered_by_role ? ` (${scan.triggered_by_role})` : ""} — período:{" "}
+            {scan.started_at ? new Date(scan.started_at).toLocaleString("pt-BR") : "—"} até{" "}
+            {scan.finished_at ? new Date(scan.finished_at).toLocaleString("pt-BR") : "em andamento"}
+          </Text>
+        ))}
+
+        <Text style={styles.h2}>Ferramentas utilizadas</Text>
+        <Text style={styles.paragraph}>
+          {toolsUsed.length > 0 ? toolsUsed.join(", ") : "Nenhuma ferramenta registrada."}
+        </Text>
+
+        <Text style={styles.h2}>Declaração de metodologia e limites</Text>
+        <Text style={styles.paragraph}>{methodologyText}</Text>
+
+        {involvesPersonalData && (
+          <>
+            <Text style={styles.h2}>Nota de conformidade com a LGPD</Text>
+            <Text style={styles.paragraph}>{lgpdText}</Text>
+          </>
+        )}
+
+        <Text style={styles.footer} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} fixed />
       </Page>
 
       {/* Sumário executivo */}

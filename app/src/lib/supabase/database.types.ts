@@ -244,6 +244,38 @@ export type Database = {
           },
         ]
       }
+      report_compliance_templates: {
+        Row: {
+          id: string
+          lgpd_note: string
+          methodology_statement: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          lgpd_note: string
+          methodology_statement: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          lgpd_note?: string
+          methodology_statement?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_compliance_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scan_logs: {
         Row: {
           created_at: string
