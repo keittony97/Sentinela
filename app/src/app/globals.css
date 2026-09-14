@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #060a07;
+  --color-bg-elevated: #0b120c;
+  --color-bg-inset: #020402;
+  --color-border: #1f4d2a;
+  --color-border-bright: #2f7a3f;
+
+  --color-fg: #baffc9;
+  --color-fg-dim: #6fa87e;
+  --color-fg-muted: #3f6b4a;
+
+  --color-phosphor: #39ff6a;
+  --color-phosphor-bright: #7dffab;
+  --color-amber: #ffb000;
+  --color-cyan: #34e2e2;
+
+  --color-critical: #ff5c5c;
+  --color-high: #ff9142;
+  --color-medium: #ffd23f;
+  --color-low: #6fe38a;
+  --color-info: #57d3ff;
+
+  --font-mono: var(--font-jetbrains-mono), "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+  --font-sans: var(--font-mono);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-phosphor);
+  color: #020402;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-inset);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-bright);
+  border: 2px solid var(--color-bg-inset);
+}
+
+/* Scanline / CRT overlay */
+.crt-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  mix-blend-mode: overlay;
+  opacity: 0.5;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 1px,
+    rgba(0, 0, 0, 0.35) 2px,
+    rgba(0, 0, 0, 0.35) 3px
+  );
+}
+
+.crt-vignette {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+/* Blinking terminal cursor */
+@keyframes blink-cursor {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.term-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1em;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: blink-cursor 1s steps(1) infinite;
+}
+
+/* Subtle phosphor glow, used sparingly */
+.glow-phosphor {
+  text-shadow: 0 0 6px rgba(57, 255, 106, 0.55), 0 0 14px rgba(57, 255, 106, 0.25);
+}
+.glow-amber {
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.5), 0 0 14px rgba(255, 176, 0, 0.22);
+}
+.glow-cyan {
+  text-shadow: 0 0 6px rgba(52, 226, 226, 0.5), 0 0 14px rgba(52, 226, 226, 0.22);
+}
+
+/* Box-drawing style borders for terminal windows */
+.term-window {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 24px rgba(57, 255, 106, 0.06);
+}
+.term-window-titlebar {
+  background: var(--color-bg-inset);
+  border-bottom: 1px solid var(--color-border);
+}
