@@ -4,13 +4,13 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 
 ## Status atual
 
-**Fase em andamento:** Fase 2 — Modelo de dados + auth + RLS (concluída)
+**Fase em andamento:** Fase 3 — Cadastro de alvo + gate de modalidade legal (concluída)
 
 ## Checklist de fases
 
 - [x] Fase 1 — Esqueleto + identidade visual
 - [x] Fase 2 — Modelo de dados + auth + RLS
-- [ ] Fase 3 — Cadastro de alvo + gate de modalidade legal
+- [x] Fase 3 — Cadastro de alvo + gate de modalidade legal
 - [ ] Fase 4 — Primeira ferramenta passiva, ponta a ponta
 - [ ] Fase 5 — Demais ferramentas do modo "Verificação Externa"
 - [ ] Fase 6 — Relatório exportável
@@ -30,8 +30,9 @@ Atualize este arquivo ao final de cada sessão/fase de trabalho. O Claude Code d
 
 ## Pendências / bloqueios conhecidos
 
-- MFA ainda não tem tela no app — Admin/Pentester só conseguem fazer login, mas não conseguem criar `targets`/`projects`/etc. até fazer enrollment de MFA (a RLS exige `aal2`). Isso é esperado pelo desenho atual, mas precisa de uma tela de enrollment antes ou durante a Fase 3, senão o Admin criado fica sem conseguir usar o sistema de verdade.
 - `service_role` key do Supabase não foi obtida (bloqueada por segurança) — só vai ser necessária quando o worker Python de scans (Fase 7+) precisar de acesso privilegiado ao banco. Buscar na hora, direto do dashboard do Supabase, sem passar pelo CLI/logs.
+- Não existe ainda tela de detalhe/edição de projeto (só criação + listagem dentro do alvo) — deve entrar naturalmente na Fase 4, quando o primeiro scan for disparado a partir de um projeto.
+- Não existe tela de gestão de usuários (convidar, trocar role) — só existe a criação manual via SQL que fiz para o primeiro Admin. Provavelmente entra numa fase futura dedicada a RBAC/gestão de equipe, ainda não planejada explicitamente no checklist original.
 
 ## Log de sessões
 
@@ -63,3 +64,16 @@ Documento inicial (`CLAUDE.md`) definido antes de qualquer código.
 - Build e lint (`next build`, `eslint .`) passando sem erros.
 
 **Próximo passo:** Fase 3 — tela de cadastro de alvo + gate de modalidade legal na UI (o gate já existe no banco; falta a experiência de usuário: formulário de projeto, checkbox de autorização, e provavelmente uma tela de enrollment de MFA antes disso, senão o Admin não consegue gravar nada).
+
+### Sessão 3 — 2026-09-14 — Fase 3: Cadastro de alvo + gate de modalidade legal
+- Tipos TypeScript gerados a partir do schema Supabase (`app/src/lib/supabase/database.types.ts`, via `supabase gen types typescript`, também contornando o bloqueio de porta do Postgres — esse comando usa a API de gerenciamento por HTTPS) e plugados nos clients browser/server.
+- `requireUser()` (`app/src/lib/supabase/auth.ts`): helper server-only que busca sessão + perfil + nível de MFA (aal1/aal2), memoizado por request com `cache()` do React. Redireciona para `/login` se não autenticado.
+- Grupo de rotas `app/src/app/(app)/` com layout autenticado (`AppHeader` mostrando `usuário@org`, role, aviso de "MFA pendente", nav e botão sair) envolvendo: dashboard (`/`, substituiu o mock da Fase 1), `/alvos`, `/alvos/[id]`, `/alvos/[id]/projetos/novo`, `/mfa`.
+- **Tela de MFA** (`/mfa`): enrollment de TOTP via `supabase.auth.mfa.enroll/challenge/verify` (client component, já que precisa ler o secret/QR code e reagir na hora) — obrigatório para Admin/Pentester conseguirem gravar qualquer coisa, conforme a RLS da Fase 2.
+- **Cadastro de alvo** (`/alvos/novo`): nome, URL, escopo (intranet/internet), dono do ativo.
+- **Cadastro de projeto com o gate de modalidade legal** (`/alvos/[id]/projetos/novo`) — a peça central do sistema: ao escolher "Ambiente de Teste", o formulário exige confirmação de autorização + justificativa antes de habilitar o botão de submit (validação client-side), e o banco reforça de novo via `CHECK` (Fase 2) caso alguém tente contornar o frontend.
+- Badges novos reaproveitando o padrão de terminal: `ScopeBadge` (intranet/internet), `LegalModeBadge` (verificação externa/ambiente de teste).
+- **Validação ponta a ponta real** com Playwright + TOTP calculado localmente (RFC 6238, script descartável): login → habilitar MFA → criar alvo → tentar criar projeto "ambiente_teste" sem marcar autorização (bloqueado) → criar com autorização (sucesso) → criar projeto "verificação externa" (sucesso). Confirmei também que o `audit_log` gravou as duas declarações de modalidade legal automaticamente, sem nenhum código da aplicação chamar isso explicitamente. Dados de teste removidos do banco depois.
+- Build e lint (`next build`, `eslint .`) passando sem erros.
+
+**Próximo passo:** Fase 4 — primeira ferramenta passiva ponta a ponta (ex: verificação de headers de segurança/TLS) a partir de um projeto existente: disparar → log de execução em tempo real → salvar finding → aparecer no relatório. Acho que antes disso vale decidir a arquitetura do worker de scans (mencionada no documento original como serviço Python separado) — ainda não há nada implementado para isso.
