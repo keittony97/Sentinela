@@ -40,7 +40,26 @@ Essa trava é a parte mais fácil de errar sem perceber — qualquer tela ou end
 
 ## RBAC
 
-Organização única (sem multi-tenant no MVP, mas manter RLS por boa prática). Perfis: Admin (gerencia usuários, aprova alvos, vê tudo), Pentester/Analista (cria projetos, roda scans, edita relatórios), Visualizador/Gestor (só leitura). MFA obrigatório para Admin e Pentester.
+Organização única (sem multi-tenant no MVP, mas manter RLS por boa prática). Perfis: Admin (gerencia usuários, aprova alvos, vê tudo), Pentester/Analista (cria projetos, roda scans, edita relatórios), Visualizador/Gestor (só leitura). MFA obrigatório para Admin e Pentester — imposto na própria RLS (ver abaixo), não só na UI.
+
+## Supabase — projeto, schema e auth
+
+- Projeto: `sentinela` (ref `fiejgbbpkxmkuwcfodpv`, região `sa-east-1`), na organização Supabase do usuário. Gerenciado via `supabase` CLI (`npx supabase`, projeto vinculado em `supabase/`).
+- Schema completo em `supabase/migrations/` (aplicar sempre via nova migração, nunca editando uma já aplicada). Tabelas: `organizations`, `users` (perfil 1:1 com `auth.users`), `targets`, `projects`, `scans`, `findings`, `audit_log`. RLS habilitado em todas, usando as funções `current_org_id()`, `current_role()`, `mfa_satisfied()`, `can_write()`, `is_admin()` (security definer, evitam recursão de RLS).
+- **Login é por usuário/senha, não e-mail** (decisão do usuário, diverge do prompt original que citava Supabase Auth "padrão"). Cada conta tem um `username` em `public.users` e um e-mail técnico sintético em `auth.users` (`<username>@users.sentinela.local`, nunca exibido nem usado para enviar nada). A função `public.email_for_username(username)` (security definer, `grant execute` para `anon`/`authenticated`) resolve usuário → e-mail técnico antes de chamar `signInWithPassword`. Ver `app/src/app/login/actions.ts`.
+- **Gate de modalidade legal reforçado no banco**: `projects` tem um `CHECK` que exige `authorization_confirmed` + justificativa quando `legal_mode = 'ambiente_teste'`; `scans.is_active_tool = true` só passa pelo trigger `enforce_scan_legal_mode` se o projeto estiver autorizado em `ambiente_teste`. Não depende só do frontend.
+- **Audit log automático**: criar/atualizar a modalidade legal de um projeto grava sozinho uma entrada em `audit_log` via trigger — não depende do código da aplicação lembrar de logar. `audit_log` não tem policy de UPDATE/DELETE e os privilégios foram revogados (`revoke update, delete ... from authenticated, anon`) — é apêndice-only de verdade.
+- **MFA obrigatório**: `can_write()`/`is_admin()` exigem `auth.jwt()->>'aal' = 'aal2'` (segundo fator já verificado na sessão) além do role. Isso significa que Admin/Pentester **não conseguem** criar/editar `targets`/`projects`/`scans`/`findings` até fazer enrollment de MFA (TOTP) pela API do Supabase Auth — ainda não há tela para isso no app (entra numa fase futura). É comportamento esperado, não bug.
+- Chaves do projeto em `app/.env.local` (gitignored): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave `publishable`, segura para o cliente). A `service_role`/secret key **não foi obtida nem salva em nenhum lugar** — só será necessária quando o worker Python (Fase 7+) precisar de acesso privilegiado; buscar na hora, direto do dashboard do Supabase.
+- Primeira conta Admin criada diretamente via SQL (inserção em `auth.users`/`auth.identities`, contornando a necessidade da service role key): usuário `keittony.ferreira`. A senha foi definida pelo usuário e não fica registrada em nenhum arquivo do repositório.
+
+## Peculiaridade de rede local (ambiente corporativo deste usuário)
+
+A rede onde este projeto é desenvolvido intercepta TLS com um certificado próprio (proxy corporativo) e também bloqueia a porta direta do Postgres (usada pelo `supabase db push`). Isso já mordeu três vezes:
+1. Download do binário nativo do SWC do Next — resolvido instalando `@next/swc-win32-x64-msvc` via `npm install` direto (que já respeita `strict-ssl=false`).
+2. Download do Chromium do Playwright — precisou de `NODE_TLS_REJECT_UNAUTHORIZED=0` só durante o `playwright install`.
+3. Chamadas HTTPS feitas pelo processo Node do Next.js (server actions chamando a API do Supabase) — resolvido de forma correta (sem desabilitar verificação TLS) com a flag `--use-system-ca` do Node 24, que faz o Node confiar na store de certificados do Windows (onde a CA corporativa já está instalada), igual o `curl` já fazia. Os scripts `dev`/`build`/`start` em `app/package.json` usam `cross-env NODE_OPTIONS=--use-system-ca` por causa disso — não remover.
+4. `supabase db push`/`supabase link` com conexão direta ao Postgres (porta do pooler) dão `ECONNRESET` nessa rede — a porta é bloqueada. Alternativa que funciona: aplicar migrações via API de gerenciamento do Supabase sobre HTTPS (`POST https://api.supabase.com/v1/projects/{ref}/database/query` com o access token, corpo `{"query": "<sql>"}`), que passa pela mesma porta 443 liberada. Depois de aplicar, inserir manualmente a versão em `supabase_migrations.schema_migrations` para manter o histórico do CLI consistente (senão o CLI tenta reaplicar do zero quando a porta do Postgres estiver acessível).
 
 ## Identidade visual — "hacker de filme"
 
