@@ -25,8 +25,8 @@ Todo projeto de teste declara, obrigatoriamente, antes de iniciar:
 1. **Escopo do alvo**: Intranet (rede interna/VPN) ou Internet (público).
 2. **Autenticação**: Sem login / Com login (credenciais de teste dedicadas, nunca de usuário real de produção).
 3. **Modalidade legal**:
-   - **"Verificação Externa (Legal)"** — testes estritamente passivos, não intrusivos e sem qualquer tráfego ativo de reconhecimento: headers de segurança, exposição de configs/chaves em código público, TLS/certificados via handshake padrão (testssl.sh), permissões públicas em bancos/storage expostos, subdomínios públicos. Nenhuma ferramenta ativa (incluindo port scanning) disponível neste modo — o objetivo é não gerar tráfego que possa ser interpretado como tentativa de ataque contra um alvo sem contato prévio.
-   - **"Ambiente de Teste"** — exige confirmação explícita de propriedade/autorização do alvo (checkbox + justificativa/nº do termo, vai para o audit log). Libera ferramentas ativas: descoberta de portas/banner grabbing (Nmap), SQLi/XSS, fuzzing, brute-force controlado de login, scanners de configuração ativa.
+   - **"Verificação Externa (Legal)"** — testes estritamente passivos, não intrusivos e sem qualquer tráfego ativo de ataque contra o alvo: headers de segurança, cookies, CORS, HSTS/mixed content, exposição de configs/chaves em código público, TLS/certificados via handshake padrão (testssl.sh), permissões públicas em bancos/storage expostos, subdomínios via Certificate Transparency e Amass (modo passivo), DNS (SPF/DKIM/DMARC/DNSSEC/MX), WHOIS, arquivos sensíveis públicos conhecidos (.git/config, .env, backups), fingerprint de tecnologia (CMS/framework/versão), e verificação de vazamento de e-mails corporativos via Have I Been Pwned. Nenhuma ferramenta ativa (incluindo port scanning) disponível neste modo — o objetivo é não gerar tráfego que possa ser interpretado como tentativa de ataque contra um alvo sem contato prévio.
+   - **"Ambiente de Teste"** — exige confirmação explícita de propriedade/autorização do alvo (checkbox + justificativa/nº do termo, vai para o audit log). Libera dois níveis de ferramentas ativas: **Detecção Ativa** (padrão do modo) e **Exploração Confirmatória** (opcional, exige uma segunda confirmação explícita separada, dado o risco de indisponibilizar o alvo mesmo em ambiente autorizado).
 
 Declaração registrada de forma imutável no `audit_log` (usuário, data/hora, relatório vinculado).
 
@@ -64,6 +64,36 @@ Tela própria por scan, independente do relatório de findings:
 - **Backend/API**: Next.js API routes ou serviço Node separado (regras de negócio: projetos, usuários, relatórios).
 - **Banco**: Supabase (Postgres) com Row Level Security desde o início.
 - **Worker de orquestração de scans** (separado do Next.js): Python (FastAPI + Celery/RQ, fila Redis), disparando OWASP ZAP, Nuclei, Nikto, sqlmap, testssl.sh em containers Docker isolados por execução; normaliza saída em formato único (severidade, evidência, CWE) antes de gravar no banco. Módulos próprios em Python para regras específicas não cobertas pelas ferramentas prontas.
+
+### Ferramentas do modo "Verificação Externa" (100% passivas)
+
+Todas as ferramentas abaixo rodam sem gerar tráfego ofensivo contra o alvo — ou fazem apenas requisições HTTP padrão (o mesmo que um navegador faria), ou consultam fontes públicas de terceiros sem tocar diretamente no alvo:
+
+- **DNS e superfície de ataque**: Certificate Transparency logs (crt.sh) para descoberta de subdomínios; consulta de registros DNS (SPF, DKIM, DMARC, DNSSEC, MX); WHOIS (expiração e servidores de nome do domínio); Amass em modo passivo (agregação de subdomínios via fontes públicas, sem escanear o alvo).
+- **Exposição de arquivos/configuração**: checagem de arquivos sensíveis públicos conhecidos (`.git/config`, `.env`, `.well-known/security.txt`, `robots.txt`, `sitemap.xml`, backups `.zip`/`.sql`); scan de JavaScript público em busca de segredos (chaves AWS, Stripe, etc. — já coberto, ampliar padrões de regex); verificação de buckets de armazenamento público (S3/GCS/Azure Blob) nomeados a partir do domínio.
+- **Cabeçalhos e configuração HTTP**: segurança de cookies (Secure/HttpOnly/SameSite); configuração de CORS (ex: `Access-Control-Allow-Origin` aceitando qualquer origem com credenciais); HSTS/preload, redirecionamento HTTP→HTTPS, mixed content; fingerprint de tecnologia (CMS/framework/versão de servidor via headers/HTML público).
+- **Inteligência externa (consulta a terceiros, não ao alvo)**: Have I Been Pwned (API) para verificar se e-mails corporativos do domínio já apareceram em vazamentos conhecidos.
+
+Cada uma dessas fontes vira um normalizador próprio no worker Python, gerando findings no mesmo formato unificado (severidade, evidência, CWE) usado pelas demais ferramentas.
+
+### Ferramentas do modo "Ambiente de Teste" (ativas/intrusivas)
+
+**Nível 1 — Detecção ativa** (liberado ao confirmar o gate padrão de "Ambiente de Teste"):
+
+- **Descoberta de conteúdo**: ffuf ou gobuster (força bruta de diretórios/arquivos/subdomínios), dirsearch.
+- **Injeção**: sqlmap (SQLi), Dalfox ou XSStrike (XSS refletido/armazenado), Commix (injeção de comando de SO).
+- **Scanners específicos de CMS/plataforma**: WPScan (se o fingerprint passivo identificar WordPress) — plugins/temas vulneráveis, enumeração de usuários.
+- **Autenticação**: Hydra ou ffuf contra formulário de login — brute-force controlado, com rate limit configurável para evitar lockout de contas no alvo mesmo em ambiente de teste.
+- **Vulnerabilidades de infraestrutura**: OpenVAS/Greenbone (CVEs de serviços e más configurações de SO, mais abrangente que o Nuclei).
+- **APIs**: OWASP ZAP API scan (a partir de especificação OpenAPI/Swagger), GraphQL Cop (introspection habilitada, batching abuse) quando o alvo expõe GraphQL.
+- **Containers/infraestrutura moderna**: Trivy (vulnerabilidades em imagens Docker), kube-hunter (más configurações de cluster Kubernetes), quando aplicável ao alvo.
+
+**Nível 2 — Exploração confirmatória** (opcional, exige segunda confirmação explícita distinta do gate de "Ambiente de Teste"):
+
+- **Metasploit Framework** — usado apenas para confirmar que uma vulnerabilidade já identificada (ex: um CVE encontrado via Nuclei/OpenVAS) é de fato explorável, não só teoricamente presente. Por ter risco real de causar indisponibilidade no alvo mesmo em ambiente controlado, este nível deve ficar sempre desligado por padrão, com confirmação e justificativa próprias registradas no `audit_log`, separadas da autorização geral do projeto.
+
+Cada ferramenta desses dois níveis segue o mesmo pipeline já definido: roda em container Docker isolado, output normalizado pelo worker Python no formato unificado de finding (severidade, evidência, CWE), com log de execução em tempo real visível na tela de logs.
+
 - **Reconhecimento de portas/serviços (substitui Shodan/Censys)**: módulo próprio em Python que roda **Nmap** contra o alvo já cadastrado (descoberta de portas abertas, banner grabbing, versão de serviço), montando uma "ficha" equivalente ao que o Shodan devolveria — sem custo de API/créditos mensais. **Disponível apenas no modo "Ambiente de Teste"** (com autorização já declarada), nunca em "Verificação Externa", já que port scanning ativo contra um alvo sem contato prévio é uma zona cinzenta juridicamente, mesmo sendo "leve". O TLS/certificado continua sendo verificado via **testssl.sh** em ambos os modos, por ser um handshake padrão que qualquer navegador faria.
 - **Fila/Jobs assíncronos**: Redis + status em tempo real via Supabase Realtime/WebSocket.
 - **Isolamento de rede**: worker de "Ambiente de Teste" roda isolado (VPC separada ou container sem acesso à rede de produção).

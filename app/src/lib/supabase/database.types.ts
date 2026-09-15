@@ -158,16 +158,19 @@ export type Database = {
       }
       organizations: {
         Row: {
+          contact_email: string | null
           created_at: string
           id: string
           name: string
         }
         Insert: {
+          contact_email?: string | null
           created_at?: string
           id?: string
           name: string
         }
         Update: {
+          contact_email?: string | null
           created_at?: string
           id?: string
           name?: string
@@ -324,9 +327,12 @@ export type Database = {
       scans: {
         Row: {
           created_at: string
+          exploitation_confirmed: boolean
+          exploitation_justification: string | null
           finished_at: string | null
           id: string
           is_active_tool: boolean
+          is_exploitation_tool: boolean
           organization_id: string
           project_id: string
           started_at: string | null
@@ -337,9 +343,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          exploitation_confirmed?: boolean
+          exploitation_justification?: string | null
           finished_at?: string | null
           id?: string
           is_active_tool?: boolean
+          is_exploitation_tool?: boolean
           organization_id: string
           project_id: string
           started_at?: string | null
@@ -350,9 +359,12 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          exploitation_confirmed?: boolean
+          exploitation_justification?: string | null
           finished_at?: string | null
           id?: string
           is_active_tool?: boolean
+          is_exploitation_tool?: boolean
           organization_id?: string
           project_id?: string
           started_at?: string | null

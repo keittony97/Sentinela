@@ -15,10 +15,15 @@ export function AppHeader({ session }: { session: SessionInfo }) {
     <header className="flex flex-col gap-3 border-b border-[var(--color-border)] px-4 py-4 sm:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 text-sm">
+          <Link href="/" className="flex items-center" aria-label="Sentinela — dashboard">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/logo-horizontal.svg" alt="Sentinela" className="h-7 w-auto" />
+          </Link>
+          <span className="h-5 w-px bg-[var(--color-border)]" aria-hidden="true" />
           <span className="whitespace-pre">
             <span className="text-[var(--color-phosphor)]">{session.profile.username}</span>
             <span className="text-[var(--color-fg-muted)]">@</span>
-            <span className="text-[var(--color-cyan)]">org</span>
+            <span className="text-[var(--color-cyan)]">{session.organizationName}</span>
             <span className="text-[var(--color-fg-muted)]">:~$</span>
           </span>
           <span className="rounded-sm border border-[var(--color-border-bright)] px-1.5 py-0.5 text-xs text-[var(--color-fg-dim)]">
@@ -50,6 +55,9 @@ export function AppHeader({ session }: { session: SessionInfo }) {
         </Link>
         <Link href="/alvos" className="text-[var(--color-fg)] hover:text-[var(--color-phosphor)]">
           alvos
+        </Link>
+        <Link href="/organizacao" className="text-[var(--color-fg)] hover:text-[var(--color-phosphor)]">
+          organização
         </Link>
         <Link href="/mfa" className="text-[var(--color-fg)] hover:text-[var(--color-phosphor)]">
           mfa

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { friendlyDbError } from "@/lib/supabase/errors";
-import { ACTIVE_TOOL_IDS, PASSIVE_TOOL_IDS } from "@/lib/scanTools";
+import { ACTIVE_TOOL_IDS, EXPLOITATION_TOOL_IDS, PASSIVE_TOOL_IDS } from "@/lib/scanTools";
 
 export type ScanFormState = { error: string | null };
 
@@ -14,14 +14,25 @@ export async function startScan(
   const targetId = String(formData.get("target_id") ?? "");
   const projectId = String(formData.get("project_id") ?? "");
   const selected = formData.getAll("tools").map(String);
-  const tools = selected.filter((t) => PASSIVE_TOOL_IDS.includes(t) || ACTIVE_TOOL_IDS.includes(t));
-  const isActiveTool = tools.some((t) => ACTIVE_TOOL_IDS.includes(t));
+  const tools = selected.filter(
+    (t) => PASSIVE_TOOL_IDS.includes(t) || ACTIVE_TOOL_IDS.includes(t) || EXPLOITATION_TOOL_IDS.includes(t),
+  );
+  const isActiveTool = tools.some((t) => ACTIVE_TOOL_IDS.includes(t) || EXPLOITATION_TOOL_IDS.includes(t));
+  const isExploitationTool = tools.some((t) => EXPLOITATION_TOOL_IDS.includes(t));
+  const exploitationConfirmed = formData.get("exploitation_confirmed") === "on";
+  const exploitationJustification = String(formData.get("exploitation_justification") ?? "").trim();
 
   if (!targetId || !projectId) {
     return { error: "Projeto inválido." };
   }
   if (tools.length === 0) {
     return { error: "Selecione ao menos uma ferramenta." };
+  }
+  if (isExploitationTool && (!exploitationConfirmed || !exploitationJustification)) {
+    return {
+      error:
+        'Ferramentas de "Exploração Confirmatória" exigem a confirmação explícita e a justificativa separadas.',
+    };
   }
 
   const supabase = await createClient();
@@ -47,6 +58,9 @@ export async function startScan(
       organization_id: profile.organization_id,
       project_id: projectId,
       is_active_tool: isActiveTool,
+      is_exploitation_tool: isExploitationTool,
+      exploitation_confirmed: isExploitationTool ? exploitationConfirmed : false,
+      exploitation_justification: isExploitationTool ? exploitationJustification : null,
       tools_used: tools,
       triggered_by: user.id,
     })

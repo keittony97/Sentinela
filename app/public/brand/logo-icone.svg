@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Sentinela">
+  <rect x="8" y="8" width="184" height="184" rx="16" fill="#0b120c" stroke="#2f7a3f" stroke-width="1.5" />
+
+  <g fill="none" stroke="#39ff6a" stroke-width="4" stroke-linecap="round">
+    <polyline points="28,52 28,28 52,28" />
+    <polyline points="148,28 172,28 172,52" />
+    <polyline points="28,148 28,172 52,172" />
+    <polyline points="172,148 172,172 148,172" />
+  </g>
+
+  <g fill="none" stroke="#39ff6a" stroke-width="3">
+    <circle cx="100" cy="100" r="40" />
+    <line x1="100" y1="42" x2="100" y2="60" />
+    <line x1="100" y1="140" x2="100" y2="158" />
+    <line x1="42" y1="100" x2="60" y2="100" />
+    <line x1="140" y1="100" x2="158" y2="100" />
+  </g>
+  <circle cx="100" cy="100" r="6" fill="#ff5c5c" />
+</svg>

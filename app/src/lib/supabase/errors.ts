@@ -8,5 +8,8 @@ export function friendlyDbError(message: string): string {
   if (message.includes("Ferramentas ativas só podem ser executadas")) {
     return message;
   }
+  if (message.includes("Ferramentas de exploração confirmatória")) {
+    return message;
+  }
   return message;
 }

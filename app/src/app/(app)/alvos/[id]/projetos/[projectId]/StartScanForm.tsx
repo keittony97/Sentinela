@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { startScan, type ScanFormState } from "./actions";
-import { ACTIVE_TOOLS, PASSIVE_TOOLS } from "@/lib/scanTools";
+import { ACTIVE_TOOLS, EXPLOITATION_TOOLS, PASSIVE_TOOLS } from "@/lib/scanTools";
 
 const initialState: ScanFormState = { error: null };
 
@@ -16,6 +16,7 @@ export function StartScanForm({
   canRunActiveTools: boolean;
 }) {
   const [state, formAction, pending] = useActionState(startScan, initialState);
+  const [exploitationSelected, setExploitationSelected] = useState(false);
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
@@ -59,6 +60,55 @@ export function StartScanForm({
               </span>
             </label>
           ))}
+
+          <div className="mt-2 flex flex-col gap-2 border-t border-[var(--color-critical)]/50 pt-3">
+            <p className="text-xs text-[var(--color-critical)]">
+              Nível 2 — Exploração confirmatória (exige segunda confirmação abaixo):
+            </p>
+            {EXPLOITATION_TOOLS.map((tool) => (
+              <label key={tool.id} className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="tools"
+                  value={tool.id}
+                  className="mt-1"
+                  checked={exploitationSelected}
+                  onChange={(e) => setExploitationSelected(e.target.checked)}
+                />
+                <span>
+                  <span className="text-[var(--color-critical)]">{tool.label}</span>
+                  <br />
+                  <span className="text-xs text-[var(--color-fg-muted)]">{tool.description}</span>
+                </span>
+              </label>
+            ))}
+
+            {exploitationSelected && (
+              <div className="mt-1 flex flex-col gap-3 border border-[var(--color-critical)] p-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="exploitation_confirmed" required />
+                  <span>
+                    Confirmo explicitamente a tentativa de exploração confirmatória, ciente do
+                    risco de indisponibilizar o alvo mesmo em ambiente autorizado.
+                  </span>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-[var(--color-fg-dim)]">justificativa (obrigatória):</span>
+                  <textarea
+                    name="exploitation_justification"
+                    required
+                    rows={3}
+                    placeholder="ex: confirmar exploração do CVE-XXXX-YYYY já identificado pelo scan de sqlmap neste projeto"
+                    className="border border-[var(--color-border)] bg-[var(--color-bg-inset)] px-2 py-1.5 text-[var(--color-fg)] outline-none focus:border-[var(--color-critical)]"
+                  />
+                </label>
+                <p className="text-xs text-[var(--color-fg-muted)]">
+                  Esta confirmação fica registrada separadamente no log de auditoria, distinta da
+                  autorização geral do projeto.
+                </p>
+              </div>
+            )}
+          </div>
         </fieldset>
       ) : (
         <p className="text-xs text-[var(--color-fg-muted)]">

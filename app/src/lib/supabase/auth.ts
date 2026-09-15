@@ -8,6 +8,7 @@ import type { Tables } from "./database.types";
 export type SessionInfo = {
   user: { id: string; email: string };
   profile: Tables<"users">;
+  organizationName: string;
   mfaCurrentLevel: "aal1" | "aal2";
   mfaNextLevel: "aal1" | "aal2";
 };
@@ -35,9 +36,16 @@ export const requireUser = cache(async (): Promise<SessionInfo> => {
 
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
+  const { data: organization } = await supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", profile.organization_id)
+    .single();
+
   return {
     user: { id: user.id, email: user.email ?? "" },
     profile,
+    organizationName: organization?.name ?? "org",
     mfaCurrentLevel: (aal?.currentLevel as "aal1" | "aal2" | undefined) ?? "aal1",
     mfaNextLevel: (aal?.nextLevel as "aal1" | "aal2" | undefined) ?? "aal1",
   };

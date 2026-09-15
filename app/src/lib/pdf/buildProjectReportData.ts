@@ -25,7 +25,11 @@ export async function buildProjectReportData(
   if (!project || !target || !profile) return null;
 
   const [{ data: organization }, { data: complianceTemplate }] = await Promise.all([
-    supabase.from("organizations").select("name").eq("id", profile.organization_id).single(),
+    supabase
+      .from("organizations")
+      .select("name, contact_email")
+      .eq("id", profile.organization_id)
+      .single(),
     supabase
       .from("report_compliance_templates")
       .select("methodology_statement, lgpd_note")
@@ -72,6 +76,7 @@ export async function buildProjectReportData(
     projectName: project.name,
     props: {
       organizationName: organization?.name ?? "org",
+      organizationContactEmail: organization?.contact_email ?? null,
       target: { name: target.name, url: target.url, scope: target.scope },
       project: {
         name: project.name,

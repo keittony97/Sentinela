@@ -258,6 +258,7 @@ const DEFAULT_LGPD_NOTE =
 
 export type ProjectReportProps = {
   organizationName: string;
+  organizationContactEmail: string | null;
   target: { name: string; url: string; scope: string };
   project: {
     name: string;
@@ -285,6 +286,7 @@ export type ProjectReportProps = {
 
 export function ProjectReportDocument({
   organizationName,
+  organizationContactEmail,
   target,
   project,
   scans,
@@ -326,6 +328,12 @@ export function ProjectReportDocument({
         <Text style={styles.coverTitle}>Relatório de Verificação de Segurança</Text>
         <Text style={styles.coverSubtitle}>PENTEST &amp; BUG BOUNTY</Text>
 
+        {organizationContactEmail && (
+          <View style={styles.coverMetaRow}>
+            <Text style={styles.coverMetaLabel}>Contato</Text>
+            <Text style={styles.coverMetaValue}>{organizationContactEmail}</Text>
+          </View>
+        )}
         <View style={styles.coverMetaRow}>
           <Text style={styles.coverMetaLabel}>Alvo</Text>
           <Text style={styles.coverMetaValue}>{target.name}</Text>

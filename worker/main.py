@@ -12,24 +12,66 @@ from fastapi import FastAPI  # noqa: E402
 
 import db  # noqa: E402
 from checks import (  # noqa: E402
+    amass_passive,
+    api_scan_zap,
     basic_injection_probe,
+    command_injection_scan,
+    container_scan_trivy,
+    content_discovery,
+    cookie_security,
+    cors_config,
+    dns_records,
     exposed_files,
+    graphql_scan,
+    hibp_check,
+    hsts_mixed_content,
+    js_secrets_scan,
+    kube_hunter_scan,
+    login_bruteforce,
+    metasploit_confirm,
     port_scan,
     security_headers,
+    sqlmap_scan,
     storage_exposure,
     subdomains,
+    tech_fingerprint,
     tls_scan,
+    vuln_scan_openvas,
+    whois_lookup,
+    wpscan_check,
+    xss_scan,
 )
 
 POLL_INTERVAL_SECONDS = float(os.environ.get("POLL_INTERVAL_SECONDS", "3"))
 
-# Ferramentas passivas: is_active_tool=false, disponíveis em qualquer
+# Ferramentas ativas Nível 1 (Detecção Ativa): is_active_tool=false, disponíveis em qualquer
 # modalidade legal. Ferramentas ativas (ver ACTIVE_TOOL_IDS): só rodam em
 # scans com is_active_tool=true, o que o banco (enforce_scan_legal_mode)
 # só aceita em projeto "ambiente_teste" autorizado E disparado por Admin
 # — reforçado aqui de novo por defesa em profundidade, não só confiar na
 # UI/banco terem feito a checagem antes de chegar no worker.
-ACTIVE_TOOL_IDS = {"basic_injection_probe", "port_scan"}
+ACTIVE_TOOL_IDS = {
+    "basic_injection_probe",
+    "port_scan",
+    "content_discovery",
+    "sqlmap_scan",
+    "xss_scan",
+    "command_injection_scan",
+    "wpscan_check",
+    "login_bruteforce",
+    "vuln_scan_openvas",
+    "api_scan_zap",
+    "graphql_scan",
+    "container_scan_trivy",
+    "kube_hunter_scan",
+}
+
+# Ferramentas ativas Nível 2 (Exploração Confirmatória): além de
+# is_active_tool=true, exigem is_exploitation_tool=true no scan — o banco
+# (enforce_scan_legal_mode) só aceita isso com exploitation_confirmed=true
+# e exploitation_justification preenchida, separados da autorização geral
+# do projeto. Reforçado aqui de novo por defesa em profundidade.
+EXPLOITATION_TOOL_IDS = {"metasploit_confirm"}
 
 TOOL_RUNNERS = {
     "headers_tls": security_headers.run,
@@ -39,6 +81,32 @@ TOOL_RUNNERS = {
     "port_scan": port_scan.run,
     "basic_injection_probe": basic_injection_probe.run,
     "storage_exposure": storage_exposure.run,
+    # Verificação Externa (passivas) — adicionadas para cobrir DNS/WHOIS/
+    # Amass passivo, cookies/CORS/HSTS/mixed content, fingerprint, segredos
+    # em JS público e Have I Been Pwned (ver CLAUDE.md).
+    "dns_records": dns_records.run,
+    "whois_lookup": whois_lookup.run,
+    "amass_passive": amass_passive.run,
+    "cookie_security": cookie_security.run,
+    "cors_config": cors_config.run,
+    "hsts_mixed_content": hsts_mixed_content.run,
+    "tech_fingerprint": tech_fingerprint.run,
+    "js_secrets_scan": js_secrets_scan.run,
+    "hibp_check": hibp_check.run,
+    # Ambiente de Teste — Nível 1 (Detecção Ativa).
+    "content_discovery": content_discovery.run,
+    "sqlmap_scan": sqlmap_scan.run,
+    "xss_scan": xss_scan.run,
+    "command_injection_scan": command_injection_scan.run,
+    "wpscan_check": wpscan_check.run,
+    "login_bruteforce": login_bruteforce.run,
+    "vuln_scan_openvas": vuln_scan_openvas.run,
+    "api_scan_zap": api_scan_zap.run,
+    "graphql_scan": graphql_scan.run,
+    "container_scan_trivy": container_scan_trivy.run,
+    "kube_hunter_scan": kube_hunter_scan.run,
+    # Ambiente de Teste — Nível 2 (Exploração Confirmatória).
+    "metasploit_confirm": metasploit_confirm.run,
 }
 
 
@@ -72,6 +140,7 @@ def process_next_scan() -> bool:
     project_id = scan["project_id"]
     tools = scan.get("tools_used") or []
     is_active_scan = bool(scan.get("is_active_tool"))
+    is_exploitation_scan = bool(scan.get("is_exploitation_tool"))
 
     def log(tool: str, level: str, message: str) -> None:
         print(f"[scan {scan_id}] [{level}] [{tool}] {message}")
@@ -100,6 +169,10 @@ def process_next_scan() -> bool:
             # em dado que chegou até aqui.
             if tool in ACTIVE_TOOL_IDS and not is_active_scan:
                 log(tool, "error", f"Ferramenta ativa '{tool}' bloqueada: scan não está marcado como is_active_tool")
+                continue
+
+            if tool in EXPLOITATION_TOOL_IDS and not is_exploitation_scan:
+                log(tool, "error", f"Ferramenta de exploração confirmatória '{tool}' bloqueada: scan não está marcado como is_exploitation_tool")
                 continue
 
             log(tool, "info", f"Ferramenta '{tool}' iniciada para {target_url}")
